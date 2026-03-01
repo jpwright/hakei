@@ -2,16 +2,20 @@
 
 import dearpygui.dearpygui as dpg
 
+from hakei.ui.layout import get_manager
+
 
 def setup_power_supply_view():
     """Create the power supply control window."""
+    get_manager().register_window("power_supply_window", "Power Supply")
+
     with dpg.window(
         label="Power Supply",
         tag="power_supply_window",
         width=400,
         height=380,
-        pos=(300, 540),
         no_close=True,
+        no_collapse=True,
     ):
         with dpg.group(horizontal=True):
             dpg.add_button(label="Output ON", width=100, tag="psu_output_btn")

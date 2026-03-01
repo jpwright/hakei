@@ -6,14 +6,16 @@ build-backend = "setuptools.build_meta"
 name = "hakei"
 version = "0.1.0"
 description = "Electronic bench equipment visualization and control"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 dependencies = [
     "dearpygui>=1.11.1",
+    "coloredlogs",
 ]
 
 [project.optional-dependencies]
 dev = [
     "ruff",
+    "quartodoc",
 ]
 
 [project.scripts]

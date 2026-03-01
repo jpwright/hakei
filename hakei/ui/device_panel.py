@@ -2,17 +2,20 @@
 
 import dearpygui.dearpygui as dpg
 
+from hakei.ui.layout import DEFAULT_SIDEBAR_WIDTH, MENUBAR_HEIGHT, PADDING
+
 
 def setup_device_panel():
-    """Create the device connection and management panel."""
+    """Create the device connection and management panel (resizable sidebar)."""
     with dpg.window(
         label="Devices",
         tag="device_panel",
-        width=280,
-        height=-1,
-        pos=(10, 30),
+        width=DEFAULT_SIDEBAR_WIDTH,
+        height=900,
+        pos=(PADDING, MENUBAR_HEIGHT + PADDING),
         no_close=True,
         no_collapse=True,
+        no_move=True,
     ):
         dpg.add_text("Connection")
         dpg.add_separator()

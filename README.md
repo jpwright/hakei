@@ -4,7 +4,7 @@ A Python application for visualization and control of electronic bench equipment
 
 ## Requirements
 
-- Python 3.8+
+- Python 3.9+
 - dearpygui
 
 ## Usage
@@ -31,6 +31,30 @@ hakei
 - Waveform/Function Generators
 - Digital Multimeters (planned)
 
+## Development
+
+### Install dev dependencies
+
+```bash
+uv pip install -e ".[dev]"
+```
+
+### Linting
+
+```bash
+uv run ruff check hakei/
+uv run ruff check --fix hakei/
+```
+
+### Documentation
+
+Generate API documentation (requires [Quarto](https://quarto.org/)):
+
+```bash
+uv run quartodoc build
+quarto preview docs
+```
+
 ## Project Structure
 
 ```
@@ -40,6 +64,7 @@ hakei/
 │   ├── __main__.py      # Application entry point
 │   └── ui/
 │       ├── __init__.py
+│       ├── layout.py    # Tiling window manager
 │       ├── theme.py     # UI theming and styling
 │       ├── menu.py      # Menu bar setup
 │       ├── device_panel.py
@@ -48,7 +73,7 @@ hakei/
 │           ├── oscilloscope.py
 │           ├── power_supply.py
 │           └── waveform_gen.py
+├── docs/                # Quartodoc documentation
 ├── pyproject.toml
-├── requirements.txt
 └── README.md
 ```

@@ -1,0 +1,50 @@
+project:
+  type: website
+  render:
+    - docs
+  output-dir: docs/_site
+
+website:
+  title: "Hakei"
+  description: "Electronic bench equipment visualization and control"
+  navbar:
+    left:
+      - text: "Home"
+        href: index.qmd
+      - text: "API Reference"
+        href: reference/index.qmd
+
+format:
+  html:
+    theme: cosmo
+    toc: true
+
+quartodoc:
+  package: hakei
+  source_dir: docs
+  dir: docs/reference
+  title: "API Reference"
+  sidebar: docs/reference/_sidebar.yml
+  parser: google
+  sections:
+    - title: "Layout Manager"
+      desc: "Tiling window manager"
+      contents:
+        - ui.layout.TilingManager
+        - ui.layout.get_manager
+        - ui.layout.setup_resize_handler
+
+    - title: "UI Setup"
+      desc: "User interface setup functions"
+      contents:
+        - ui.theme.setup_theme
+        - ui.theme.create_primary_window
+        - ui.menu.setup_menu_bar
+        - ui.device_panel.setup_device_panel
+
+    - title: "Instrument Views"
+      desc: "Instrument panel views"
+      contents:
+        - ui.views.oscilloscope.setup_oscilloscope_view
+        - ui.views.power_supply.setup_power_supply_view
+        - ui.views.waveform_gen.setup_waveform_gen_view

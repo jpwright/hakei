@@ -7,9 +7,11 @@ power supplies, and waveform generators.
 
 import logging
 
+import coloredlogs
 import dearpygui.dearpygui as dpg
 
 from hakei.ui.device_panel import setup_device_panel
+from hakei.ui.layout import get_manager, setup_resize_handler
 from hakei.ui.menu import setup_menu_bar
 from hakei.ui.theme import create_primary_window, setup_theme
 from hakei.ui.views.oscilloscope import setup_oscilloscope_view
@@ -20,40 +22,45 @@ log = logging.getLogger(__name__)
 
 
 def main():
-    logging.basicConfig(
+    coloredlogs.install(
         level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        fmt="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
+
+    log.info("starting hakei")
 
     dpg.create_context()
 
-    try:
-        setup_theme()
+    setup_theme()
 
-        dpg.create_viewport(
-            title="Hakei",
-            width=1280,
-            height=960,
-            min_width=800,
-            min_height=600,
-        )
+    dpg.create_viewport(
+        title="hakei",
+        width=1280,
+        height=960,
+        min_width=800,
+        min_height=600,
+    )
 
-        create_primary_window()
-        setup_menu_bar()
-        setup_device_panel()
-        setup_oscilloscope_view()
-        setup_power_supply_view()
-        setup_waveform_gen_view()
+    create_primary_window()
+    setup_menu_bar()
+    setup_device_panel()
+    setup_oscilloscope_view()
+    setup_power_supply_view()
+    setup_waveform_gen_view()
 
-        dpg.setup_dearpygui()
-        dpg.show_viewport()
-        dpg.start_dearpygui()
+    setup_resize_handler()
 
-    except Exception:
-        log.exception("Fatal error")
-        raise
-    finally:
-        dpg.destroy_context()
+    dpg.setup_dearpygui()
+    dpg.show_viewport()
+
+    manager = get_manager()
+    manager.on_viewport_resize()
+
+    while dpg.is_dearpygui_running():
+        manager.check_window_drag()
+        dpg.render_dearpygui_frame()
+
+    dpg.destroy_context()
 
 
 if __name__ == "__main__":

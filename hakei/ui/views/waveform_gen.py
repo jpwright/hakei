@@ -2,16 +2,20 @@
 
 import dearpygui.dearpygui as dpg
 
+from hakei.ui.layout import get_manager
+
 
 def setup_waveform_gen_view():
     """Create the waveform generator control window."""
+    get_manager().register_window("waveform_gen_window", "Waveform Generator")
+
     with dpg.window(
         label="Waveform Generator",
         tag="waveform_gen_window",
         width=400,
         height=380,
-        pos=(710, 540),
         no_close=True,
+        no_collapse=True,
     ):
         with dpg.group(horizontal=True):
             dpg.add_button(label="Output ON", width=100, tag="wfg_output_btn")

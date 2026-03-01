@@ -47,3 +47,13 @@ htmlcov/
 
 # uv
 uv.lock
+
+# Documentation (quartodoc generated)
+docs/_site/
+docs/reference/
+docs/.quarto/
+objects.json
+.quarto/
+
+/.quarto/
+**/*.quarto_ipynb

@@ -1,0 +1,48 @@
+---
+title: "Hakei"
+---
+
+Hakei is a Python application for visualization and control of electronic bench equipment including oscilloscopes, power supplies, and waveform generators.
+
+## Features
+
+- **Instrument Panels**: Dedicated views for oscilloscopes, power supplies, and waveform generators
+- **Tiling Layout**: Drag-and-drop window management with automatic stacking
+- **Device Connection**: Support for VISA, Serial, USB, and Ethernet interfaces
+- **DPI-Aware UI**: Automatic font scaling for high-DPI displays
+
+## Installation
+
+```bash
+uv run hakei
+```
+
+Or install with pip:
+
+```bash
+pip install -e .
+hakei
+```
+
+## Quick Start
+
+Launch the application:
+
+```bash
+uv run hakei
+```
+
+The interface consists of:
+
+- **Devices Panel** (left sidebar): Connect and manage instruments
+- **Instrument Panels** (main area): Oscilloscope, power supply, and waveform generator controls
+
+### Layout Management
+
+- **Resize panels**: Drag the bottom edge of any panel
+- **Reorder panels**: Drag a panel's title bar to move it
+- **Drop zones**: Blue highlight shows where the panel will land
+
+## API Reference
+
+See the [API Reference](reference/index.qmd) for detailed documentation of all modules.

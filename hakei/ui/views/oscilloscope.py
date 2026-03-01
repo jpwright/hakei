@@ -2,16 +2,20 @@
 
 import dearpygui.dearpygui as dpg
 
+from hakei.ui.layout import get_manager
+
 
 def setup_oscilloscope_view():
     """Create the oscilloscope visualization window."""
+    get_manager().register_window("oscilloscope_window", "Oscilloscope")
+
     with dpg.window(
         label="Oscilloscope",
         tag="oscilloscope_window",
         width=700,
         height=500,
-        pos=(300, 30),
         no_close=True,
+        no_collapse=True,
     ):
         with dpg.group(horizontal=True):
             dpg.add_button(label="Run/Stop", width=80)
