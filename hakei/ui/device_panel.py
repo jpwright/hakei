@@ -20,17 +20,21 @@ def setup_device_panel():
         dpg.add_text("Connection")
         dpg.add_separator()
 
+        dpg.add_text("Interface", color=(150, 150, 150))
         dpg.add_combo(
-            label="Interface",
             items=["VISA", "Serial", "USB", "Ethernet"],
             default_value="VISA",
             width=-1,
         )
+
+        dpg.add_spacer(height=5)
+        dpg.add_text("Address", color=(150, 150, 150))
         dpg.add_input_text(
-            label="Address",
             hint="TCPIP::192.168.1.100::INSTR",
             width=-1,
         )
+
+        dpg.add_spacer(height=5)
         dpg.add_button(label="Connect", width=-1)
         dpg.add_button(label="Scan", width=-1)
 

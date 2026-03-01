@@ -4,15 +4,23 @@ import dearpygui.dearpygui as dpg
 
 from hakei.ui.views.base import InstrumentPanel
 
-CHANNEL_WIDTH = 220
+CHANNEL_WIDTH = 280
 
 
 class PowerSupplyChannel:
     """A single power supply output channel."""
 
-    def __init__(self, channel_id: int, name: str | None = None):
+    def __init__(
+        self,
+        channel_id: int,
+        name: str | None = None,
+        max_voltage: float = 30.0,
+        max_current: float = 5.0,
+    ):
         self.channel_id = channel_id
         self.name = name or f"CH{channel_id}"
+        self.max_voltage = max_voltage
+        self.max_current = max_current
         self._tag_prefix = f"psu_ch{channel_id}"
 
     @property
@@ -43,6 +51,36 @@ class PowerSupplyChannel:
     def set_current_tag(self) -> str:
         return f"{self._tag_prefix}_set_current"
 
+    @property
+    def voltage_knob_tag(self) -> str:
+        return f"{self._tag_prefix}_voltage_knob"
+
+    @property
+    def current_knob_tag(self) -> str:
+        return f"{self._tag_prefix}_current_knob"
+
+    def _on_voltage_knob_change(self, sender: str, value: float) -> None:
+        """Sync input field when knob changes."""
+        dpg.set_value(self.set_voltage_tag, value)
+
+    def _on_voltage_input_change(self, sender: str, value: float) -> None:
+        """Sync knob when input field changes."""
+        clamped = max(0.0, min(self.max_voltage, value))
+        dpg.set_value(self.voltage_knob_tag, clamped)
+        if value != clamped:
+            dpg.set_value(self.set_voltage_tag, clamped)
+
+    def _on_current_knob_change(self, sender: str, value: float) -> None:
+        """Sync input field when knob changes."""
+        dpg.set_value(self.set_current_tag, value)
+
+    def _on_current_input_change(self, sender: str, value: float) -> None:
+        """Sync knob when input field changes."""
+        clamped = max(0.0, min(self.max_current, value))
+        dpg.set_value(self.current_knob_tag, clamped)
+        if value != clamped:
+            dpg.set_value(self.set_current_tag, clamped)
+
     def build_ui(self) -> None:
         """Build the UI for this channel."""
         with dpg.child_window(width=CHANNEL_WIDTH, border=True):
@@ -51,13 +89,11 @@ class PowerSupplyChannel:
 
             with dpg.group(horizontal=True):
                 dpg.add_button(label="ON", width=50, tag=self.output_btn_tag)
-                dpg.add_text(
-                    "OFF", tag=self.output_status_tag, color=(255, 100, 100)
-                )
+                dpg.add_text("OFF", tag=self.output_status_tag, color=(255, 100, 100))
 
             dpg.add_spacer(height=8)
 
-            with dpg.child_window(height=80, border=True):
+            with dpg.group():
                 with dpg.group(horizontal=True):
                     dpg.add_text("V:", color=(100, 200, 100))
                     dpg.add_text("0.000", tag=self.actual_voltage_tag)
@@ -72,48 +108,92 @@ class PowerSupplyChannel:
 
             dpg.add_spacer(height=8)
 
-            dpg.add_text("Voltage", color=(150, 150, 150))
             with dpg.group(horizontal=True):
-                dpg.add_input_float(
-                    tag=self.set_voltage_tag,
-                    default_value=0.0,
-                    min_value=0.0,
-                    max_value=30.0,
-                    step=0.1,
-                    width=100,
-                    format="%.2f",
-                )
-                dpg.add_text("V")
+                with dpg.table(header_row=False, borders_innerV=False, borders_outerH=False,
+                            borders_outerV=False, borders_innerH=False):
+                    dpg.add_table_column()
+                    dpg.add_table_column()
 
-            dpg.add_text("Current", color=(150, 150, 150))
-            with dpg.group(horizontal=True):
-                dpg.add_input_float(
-                    tag=self.set_current_tag,
-                    default_value=0.0,
-                    min_value=0.0,
-                    max_value=5.0,
-                    step=0.01,
-                    width=100,
-                    format="%.3f",
-                )
-                dpg.add_text("A")
+                    with dpg.table_row():
+                        with dpg.group():
+                            dpg.add_text("Voltage", color=(100, 200, 100))
+                            dpg.add_knob_float(
+                                tag=self.voltage_knob_tag,
+                                default_value=0.0,
+                                min_value=0.0,
+                                max_value=self.max_voltage,
+                                width=80,
+                                height=80,
+                                indent=20,
+                                callback=self._on_voltage_knob_change,
+                            )
+                            with dpg.group(horizontal=True):
+                                dpg.add_input_float(
+                                    tag=self.set_voltage_tag,
+                                    default_value=0.0,
+                                    min_value=0.0,
+                                    max_value=self.max_voltage,
+                                    step=0,
+                                    step_fast=0,
+                                    width=60,
+                                    format="%.2f",
+                                    callback=self._on_voltage_input_change,
+                                    label='V',
+                                )
+
+                        with dpg.group():
+                            dpg.add_text("Current", color=(100, 150, 255))
+                            dpg.add_knob_float(
+                                tag=self.current_knob_tag,
+                                default_value=0.0,
+                                min_value=0.0,
+                                max_value=self.max_current,
+                                width=80,
+                                height=80,
+                                indent=20,
+                                callback=self._on_current_knob_change,
+                            )
+                            with dpg.group(horizontal=True):
+                                dpg.add_input_float(
+                                    tag=self.set_current_tag,
+                                    default_value=0.0,
+                                    min_value=0.0,
+                                    max_value=self.max_current,
+                                    step=0,
+                                    step_fast=0,
+                                    width=70,
+                                    format="%.3f",
+                                    callback=self._on_current_input_change,
+                                )
 
             dpg.add_spacer(height=8)
             dpg.add_text("Presets", color=(150, 150, 150))
 
             with dpg.group(horizontal=True):
-                dpg.add_button(label="3.3", width=45)
-                dpg.add_button(label="5", width=45)
-                dpg.add_button(label="12", width=45)
-                dpg.add_button(label="24", width=45)
+                dpg.add_button(
+                    label="3.3V", width=55, callback=lambda: self.set_voltage(3.3)
+                )
+                dpg.add_button(
+                    label="5V", width=55, callback=lambda: self.set_voltage(5.0)
+                )
+                dpg.add_button(
+                    label="12V", width=55, callback=lambda: self.set_voltage(12.0)
+                )
+                dpg.add_button(
+                    label="24V", width=55, callback=lambda: self.set_voltage(24.0)
+                )
 
     def set_voltage(self, voltage: float) -> None:
         """Set the voltage setpoint."""
-        dpg.set_value(self.set_voltage_tag, voltage)
+        clamped = max(0.0, min(self.max_voltage, voltage))
+        dpg.set_value(self.set_voltage_tag, clamped)
+        dpg.set_value(self.voltage_knob_tag, clamped)
 
     def set_current(self, current: float) -> None:
         """Set the current setpoint."""
-        dpg.set_value(self.set_current_tag, current)
+        clamped = max(0.0, min(self.max_current, current))
+        dpg.set_value(self.set_current_tag, clamped)
+        dpg.set_value(self.current_knob_tag, clamped)
 
     def get_voltage_setpoint(self) -> float:
         """Get the voltage setpoint."""
@@ -147,7 +227,7 @@ class PowerSupplyPanel(InstrumentPanel):
     """Power supply instrument panel with configurable channels."""
 
     def __init__(self, num_channels: int = 1, channel_names: list[str] | None = None):
-        super().__init__(tag="power_supply", label="Power Supply", preferred_height=320)
+        super().__init__(tag="power_supply", label="Power Supply", preferred_height=380)
         self.channels: list[PowerSupplyChannel] = []
         self._num_channels = num_channels
         self._channel_names = channel_names or []
