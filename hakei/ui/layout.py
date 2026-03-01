@@ -28,6 +28,7 @@ class DropZone(Enum):
 class TiledWindow:
     tag: str
     label: str
+    preferred_height: int = 300
     visible: bool = True
     last_pos: list[int] = field(default_factory=lambda: [0, 0])
     last_height: int = 0
@@ -49,9 +50,11 @@ class TilingManager:
         self._drop_zone: DropZone | None = None
         self._target_idx: int | None = None
 
-    def register_window(self, tag: str, label: str) -> None:
+    def register_window(self, tag: str, label: str, preferred_height: int = 300) -> None:
         """Register a window to be managed by the tiling manager."""
-        self.windows.append(TiledWindow(tag=tag, label=label))
+        self.windows.append(
+            TiledWindow(tag=tag, label=label, preferred_height=preferred_height)
+        )
 
     def get_content_area(self) -> tuple[int, int, int, int]:
         """Get the content area (x, y, width, height) excluding sidebar."""
@@ -115,13 +118,11 @@ class TilingManager:
             return
 
         x, start_y, width, total_height = self.get_content_area()
-
         num_windows = len(visible)
-        default_height = total_height // num_windows if num_windows > 0 else total_height
 
         for window in visible:
             if window.last_height <= 0:
-                window.last_height = default_height
+                window.last_height = window.preferred_height
 
         current_y = start_y
         for i, window in enumerate(visible):
@@ -162,10 +163,20 @@ class TilingManager:
                 continue
 
             try:
+                current_pos = dpg.get_item_pos(window.tag)
                 current_height = dpg.get_item_height(window.tag)
-                if abs(current_height - window.last_height) > 5:
-                    window.last_height = max(MIN_WINDOW_HEIGHT, current_height)
-                    resized = True
+                height_changed = abs(current_height - window.last_height) > 5
+                top_moved = abs(current_pos[1] - window.expected_pos[1]) > 5
+
+                if height_changed:
+                    if top_moved:
+                        # Top-edge resize detected - revert it
+                        dpg.set_item_pos(window.tag, window.expected_pos)
+                        dpg.set_item_height(window.tag, window.last_height)
+                    else:
+                        # Bottom-edge resize - accept it
+                        window.last_height = max(MIN_WINDOW_HEIGHT, current_height)
+                        resized = True
             except Exception:
                 continue
 
@@ -280,7 +291,7 @@ class TilingManager:
         self.apply_layout(skip_dragging=False)
 
     def _redistribute_heights(self) -> None:
-        """Redistribute heights equally among visible windows."""
+        """Redistribute heights based on preferred heights."""
         visible = [w for w in self.windows if w.visible]
         if not visible:
             return
@@ -288,10 +299,16 @@ class TilingManager:
         _, _, _, total_height = self.get_content_area()
         total_padding = PADDING * (len(visible) - 1)
         available = total_height - total_padding
-        per_window = available // len(visible)
 
+        total_preferred = sum(w.preferred_height for w in visible)
+        if total_preferred <= 0:
+            total_preferred = available
+
+        scale = available / total_preferred
         for window in visible:
-            window.last_height = per_window
+            window.last_height = max(
+                MIN_WINDOW_HEIGHT, int(window.preferred_height * scale)
+            )
 
     def on_viewport_resize(self) -> None:
         """Handle viewport resize."""
@@ -300,7 +317,12 @@ class TilingManager:
         self._viewport_height = dpg.get_viewport_height()
         self._update_sidebar()
 
-        if old_height != self._viewport_height:
+        visible = [w for w in self.windows if w.visible]
+        needs_initial_layout = any(w.last_height <= 0 for w in visible)
+
+        if needs_initial_layout:
+            self._redistribute_heights()
+        elif old_height != self._viewport_height:
             self._scale_window_heights(old_height, self._viewport_height)
 
         self.apply_layout(skip_dragging=False)

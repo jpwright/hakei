@@ -2,21 +2,20 @@
 
 import dearpygui.dearpygui as dpg
 
-from hakei.ui.layout import get_manager
+from hakei.ui.views.base import InstrumentPanel
 
 
-def setup_waveform_gen_view():
-    """Create the waveform generator control window."""
-    get_manager().register_window("waveform_gen_window", "Waveform Generator")
+class WaveformGeneratorPanel(InstrumentPanel):
+    """Waveform generator instrument panel."""
 
-    with dpg.window(
-        label="Waveform Generator",
-        tag="waveform_gen_window",
-        width=400,
-        height=380,
-        no_close=True,
-        no_collapse=True,
-    ):
+    def __init__(self):
+        super().__init__(tag="waveform_gen", label="Waveform Generator", preferred_height=350)
+
+    @property
+    def window_tag(self) -> str:
+        return "waveform_gen_window"
+
+    def _build_ui(self) -> None:
         with dpg.group(horizontal=True):
             dpg.add_button(label="Output ON", width=100, tag="wfg_output_btn")
             dpg.add_spacer(width=20)
@@ -103,3 +102,15 @@ def setup_waveform_gen_view():
                 default_value="AM",
                 width=80,
             )
+
+
+_panel: WaveformGeneratorPanel | None = None
+
+
+def setup_waveform_gen_view() -> WaveformGeneratorPanel:
+    """Create the waveform generator control window."""
+    global _panel
+    if _panel is None:
+        _panel = WaveformGeneratorPanel()
+    _panel.setup()
+    return _panel

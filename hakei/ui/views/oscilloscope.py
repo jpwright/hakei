@@ -2,21 +2,20 @@
 
 import dearpygui.dearpygui as dpg
 
-from hakei.ui.layout import get_manager
+from hakei.ui.views.base import InstrumentPanel
 
 
-def setup_oscilloscope_view():
-    """Create the oscilloscope visualization window."""
-    get_manager().register_window("oscilloscope_window", "Oscilloscope")
+class OscilloscopePanel(InstrumentPanel):
+    """Oscilloscope instrument panel."""
 
-    with dpg.window(
-        label="Oscilloscope",
-        tag="oscilloscope_window",
-        width=700,
-        height=500,
-        no_close=True,
-        no_collapse=True,
-    ):
+    def __init__(self):
+        super().__init__(tag="oscilloscope", label="Oscilloscope", preferred_height=450)
+
+    @property
+    def window_tag(self) -> str:
+        return "oscilloscope_window"
+
+    def _build_ui(self) -> None:
         with dpg.group(horizontal=True):
             dpg.add_button(label="Run/Stop", width=80)
             dpg.add_button(label="Single", width=80)
@@ -37,13 +36,15 @@ def setup_oscilloscope_view():
             dpg.add_plot_axis(dpg.mvYAxis, label="Voltage (V)", tag="scope_y_axis")
 
             dpg.add_line_series(
-                [], [],
+                [],
+                [],
                 label="CH1",
                 parent="scope_y_axis",
                 tag="ch1_series",
             )
             dpg.add_line_series(
-                [], [],
+                [],
+                [],
                 label="CH2",
                 parent="scope_y_axis",
                 tag="ch2_series",
@@ -62,7 +63,9 @@ def setup_oscilloscope_view():
                     )
                     dpg.add_spacer(width=20)
                     dpg.add_text("Position:")
-                    dpg.add_slider_float(width=150, default_value=0, min_value=-100, max_value=100)
+                    dpg.add_slider_float(
+                        width=150, default_value=0, min_value=-100, max_value=100
+                    )
 
             with dpg.tab(label="Channel 1"):
                 with dpg.group(horizontal=True):
@@ -98,7 +101,23 @@ def setup_oscilloscope_view():
                     dpg.add_combo(items=["CH1", "CH2", "EXT"], default_value="CH1", width=80)
                     dpg.add_spacer(width=10)
                     dpg.add_text("Mode:")
-                    dpg.add_combo(items=["Auto", "Normal", "Single"], default_value="Auto", width=80)
+                    dpg.add_combo(
+                        items=["Auto", "Normal", "Single"], default_value="Auto", width=80
+                    )
                     dpg.add_spacer(width=10)
                     dpg.add_text("Level:")
-                    dpg.add_slider_float(width=120, default_value=0, min_value=-10, max_value=10)
+                    dpg.add_slider_float(
+                        width=120, default_value=0, min_value=-10, max_value=10
+                    )
+
+
+_panel: OscilloscopePanel | None = None
+
+
+def setup_oscilloscope_view() -> OscilloscopePanel:
+    """Create the oscilloscope visualization window."""
+    global _panel
+    if _panel is None:
+        _panel = OscilloscopePanel()
+    _panel.setup()
+    return _panel

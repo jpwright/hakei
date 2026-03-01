@@ -35,8 +35,8 @@ def main():
 
     dpg.create_viewport(
         title="hakei",
-        width=1280,
-        height=960,
+        width=1600,
+        height=1000,
         min_width=800,
         min_height=600,
     )
@@ -45,13 +45,14 @@ def main():
     setup_menu_bar()
     setup_device_panel()
     setup_oscilloscope_view()
-    setup_power_supply_view()
+    setup_power_supply_view(num_channels=2)
     setup_waveform_gen_view()
 
     setup_resize_handler()
 
     dpg.setup_dearpygui()
     dpg.show_viewport()
+    dpg.maximize_viewport()
 
     manager = get_manager()
     manager.on_viewport_resize()
