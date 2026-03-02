@@ -16,7 +16,9 @@ website:
 
 format:
   html:
-    theme: cosmo
+    theme:
+      light: flatly
+      dark: darkly
     toc: true
 
 quartodoc:
@@ -40,7 +42,7 @@ quartodoc:
         - ui.theme.setup_theme
         - ui.theme.create_primary_window
         - ui.menu.setup_menu_bar
-        - ui.device_panel.setup_device_panel
+        - ui.instrument_panel.setup_instrument_panel
 
     - title: "Instrument Views"
       desc: "Instrument panel views"

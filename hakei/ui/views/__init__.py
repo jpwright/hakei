@@ -1,4 +1,4 @@
-"""Device-specific view modules."""
+"""Instrument-specific view modules."""
 
 from hakei.ui.views.base import InstrumentPanel
 from hakei.ui.views.oscilloscope import OscilloscopePanel

@@ -53,3 +53,6 @@ uv.lock
 objects.json
 docs/_site/
 docs/reference/
+
+/.quarto/
+**/*.quarto_ipynb

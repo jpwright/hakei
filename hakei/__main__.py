@@ -10,13 +10,11 @@ import logging
 import coloredlogs
 import dearpygui.dearpygui as dpg
 
-from hakei.ui.device_panel import setup_device_panel
+from hakei.config import get_initial_viewport_size
+from hakei.ui.instrument_panel import load_default_config, save_default_config, setup_instrument_panel
 from hakei.ui.layout import get_manager, setup_resize_handler
 from hakei.ui.menu import setup_menu_bar
 from hakei.ui.theme import create_primary_window, setup_theme
-from hakei.ui.views.oscilloscope import setup_oscilloscope_view
-from hakei.ui.views.power_supply import setup_power_supply_view
-from hakei.ui.views.waveform_gen import setup_waveform_gen_view
 
 log = logging.getLogger(__name__)
 
@@ -33,33 +31,37 @@ def main():
 
     setup_theme()
 
+    viewport_width, viewport_height = get_initial_viewport_size()
     dpg.create_viewport(
         title="hakei",
-        width=1600,
-        height=1000,
+        width=viewport_width,
+        height=viewport_height,
         min_width=800,
         min_height=600,
     )
 
     create_primary_window()
     setup_menu_bar()
-    setup_device_panel()
-    setup_oscilloscope_view()
-    setup_power_supply_view(num_channels=2)
-    setup_waveform_gen_view()
+    setup_instrument_panel()
 
     setup_resize_handler()
 
     dpg.setup_dearpygui()
     dpg.show_viewport()
-    dpg.maximize_viewport()
 
     manager = get_manager()
     manager.on_viewport_resize()
 
+    # Load default configuration
+    load_default_config()
+
     while dpg.is_dearpygui_running():
         manager.check_window_drag()
+        manager.run_updates()
         dpg.render_dearpygui_frame()
+
+    # Save configuration before exiting
+    save_default_config()
 
     dpg.destroy_context()
 

@@ -1,0 +1,93 @@
+# Hakei Device Registry
+# This file defines recognized devices and their available instruments.
+#
+# Each device entry should have:
+#   manufacturer: The manufacturer name (case-insensitive for matching)
+#   model: The model name/number (case-insensitive for matching)
+#   device_class: The fully qualified class name for the device driver
+#   device_kwargs: (optional) Arguments passed to the device constructor
+#   description: (optional) Human-readable description
+#   instruments: List of instruments available on this device
+#
+# Each instrument entry should have:
+#   id: Unique identifier for the instrument within the device
+#   description: Human-readable description
+#   instrument_class: The fully qualified class name for the instrument driver
+#   panel_class: The fully qualified class name for the UI panel
+#   instrument_kwargs: (optional) Arguments passed to the instrument constructor
+#   panel_kwargs: (optional) Arguments passed to the panel constructor
+
+devices:
+  # Dummy device for testing
+  - manufacturer: hakei
+    model: DummyDevice
+    device_class: hakei.instruments.dummy.DummyDevice
+    description: Dummy multi-function device for testing
+    instruments:
+      - id: oscilloscope
+        description: 4-channel Oscilloscope
+        instrument_class: hakei.instruments.dummy.DummyOscilloscope
+        panel_class: hakei.ui.views.OscilloscopePanel
+        instrument_kwargs:
+          num_channels: 4
+        panel_kwargs:
+          num_channels: 4
+      - id: power_supply
+        description: 2-channel Power Supply
+        instrument_class: hakei.instruments.dummy.DummyPowerSupply
+        panel_class: hakei.ui.views.PowerSupplyPanel
+        instrument_kwargs:
+          num_channels: 2
+        panel_kwargs:
+          num_channels: 2
+      - id: waveform_generator
+        description: 2-channel Waveform Generator
+        instrument_class: hakei.instruments.dummy.DummyWaveformGenerator
+        panel_class: hakei.ui.views.WaveformGeneratorPanel
+        instrument_kwargs:
+          num_channels: 2
+        panel_kwargs:
+          num_channels: 2
+
+  # Digilent Analog Discovery 2
+  - manufacturer: Digilent
+    model: Analog Discovery 2
+    device_class: hakei.instruments.digilent.AnalogDiscovery2
+    description: Digilent Analog Discovery 2 USB oscilloscope and multi-function instrument
+    instruments:
+      - id: oscilloscope
+        description: 2-channel Oscilloscope (30MHz, 100MS/s)
+        instrument_class: hakei.instruments.digilent.DigilentOscilloscope
+        panel_class: hakei.ui.views.OscilloscopePanel
+        instrument_kwargs:
+          num_channels: 2
+        panel_kwargs:
+          num_channels: 2
+      - id: waveform_generator
+        description: 2-channel Waveform Generator (12MHz)
+        instrument_class: hakei.instruments.digilent.DigilentWaveformGenerator
+        panel_class: hakei.ui.views.WaveformGeneratorPanel
+        instrument_kwargs:
+          num_channels: 2
+        panel_kwargs:
+          num_channels: 2
+      - id: power_supply
+        description: Variable Power Supply (0-5V, 0-0.5V negative)
+        instrument_class: hakei.instruments.digilent.DigilentPowerSupply
+        panel_class: hakei.ui.views.PowerSupplyPanel
+        instrument_kwargs:
+          num_channels: 2
+        panel_kwargs:
+          num_channels: 2
+      - id: logic_analyzer
+        description: 16-channel Logic Analyzer (100MS/s)
+        instrument_class: hakei.instruments.digilent.DigilentLogicAnalyzer
+        panel_class: hakei.ui.views.LogicAnalyzerPanel
+        instrument_kwargs:
+          num_channels: 16
+      - id: pattern_generator
+        description: 16-channel Pattern Generator
+        instrument_class: hakei.instruments.digilent.DigilentPatternGenerator
+        panel_class: hakei.ui.views.PatternGeneratorPanel
+        instrument_kwargs:
+          num_channels: 16

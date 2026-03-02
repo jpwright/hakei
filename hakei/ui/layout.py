@@ -49,6 +49,19 @@ class TilingManager:
         self._dragging_window: TiledWindow | None = None
         self._drop_zone: DropZone | None = None
         self._target_idx: int | None = None
+        self._update_callbacks: list[callable] = []
+
+    def register_update_callback(self, callback: callable) -> None:
+        """Register a callback to be called each frame."""
+        self._update_callbacks.append(callback)
+
+    def run_updates(self) -> None:
+        """Run all registered update callbacks."""
+        for callback in self._update_callbacks:
+            try:
+                callback()
+            except Exception as e:
+                log.debug("Update callback error: %s", e)
 
     def register_window(self, tag: str, label: str, preferred_height: int = 300) -> None:
         """Register a window to be managed by the tiling manager."""
@@ -67,13 +80,13 @@ class TilingManager:
     def _check_sidebar_resize(self) -> bool:
         """Check if sidebar was resized and update layout if needed."""
         try:
-            current_width = dpg.get_item_width("device_panel")
+            current_width = dpg.get_item_width("instrument_panel")
             current_width = max(MIN_SIDEBAR_WIDTH, min(MAX_SIDEBAR_WIDTH, current_width))
 
             if abs(current_width - self._last_sidebar_width) > 2:
                 self._sidebar_width = current_width
                 self._last_sidebar_width = current_width
-                dpg.set_item_width("device_panel", current_width)
+                dpg.set_item_width("instrument_panel", current_width)
                 return True
         except Exception:
             pass
@@ -347,9 +360,9 @@ class TilingManager:
         """Update sidebar dimensions."""
         try:
             dpg.set_item_height(
-                "device_panel", self._viewport_height - MENUBAR_HEIGHT - PADDING * 2
+                "instrument_panel", self._viewport_height - MENUBAR_HEIGHT - PADDING * 2
             )
-            current_width = dpg.get_item_width("device_panel")
+            current_width = dpg.get_item_width("instrument_panel")
             self._sidebar_width = max(MIN_SIDEBAR_WIDTH, min(MAX_SIDEBAR_WIDTH, current_width))
             self._last_sidebar_width = self._sidebar_width
         except Exception:
