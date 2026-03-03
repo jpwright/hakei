@@ -1,11 +1,21 @@
 """Menu bar setup for Hakei."""
 
 import logging
+from importlib.metadata import version
 from pathlib import Path
 
 import dearpygui.dearpygui as dpg
 
 from hakei.ui.fdialog import FileDialog
+
+
+def _get_version() -> str:
+    """Return the application version from package metadata."""
+    try:
+        return version("hakei")
+    except Exception:
+        from hakei import __version__
+        return __version__
 
 log = logging.getLogger(__name__)
 
@@ -66,6 +76,29 @@ def _on_load_file_selected(selected_files: list[str]):
         log.error("Failed to load configuration from %s", file_path)
 
 
+def _on_about():
+    """Show the About dialog with version info."""
+    ver = _get_version()
+    with dpg.window(label="about", modal=True, tag="about_window"):
+        with dpg.table(header_row=False, policy=dpg.mvTable_SizingStretchProp):
+            dpg.add_table_column()
+            dpg.add_table_column()
+            dpg.add_table_column()
+            with dpg.table_row():
+                dpg.add_spacer()
+                dpg.add_text(f"version {ver}")
+                dpg.add_spacer()
+        dpg.add_separator()
+        with dpg.table(header_row=False):
+            dpg.add_table_column()
+            dpg.add_table_column()
+            dpg.add_table_column()
+            with dpg.table_row():
+                dpg.add_spacer()    
+                dpg.add_button(label="OK", callback=lambda: dpg.delete_item("about_window"))
+                dpg.add_spacer()
+
+
 def setup_menu_bar():
     """Create the application menu bar."""
     global _save_dialog, _load_dialog
@@ -112,4 +145,4 @@ def setup_menu_bar():
 
         with dpg.menu(label="Help"):
             dpg.add_menu_item(label="Documentation")
-            dpg.add_menu_item(label="About")
+            dpg.add_menu_item(label="About", callback=_on_about)

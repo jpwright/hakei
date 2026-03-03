@@ -2,6 +2,8 @@
 
 hakei is a cross-platform control panel for laboratory instruments, built using [dearpygui](https://github.com/hoffstadt/DearPyGui). It's meant as a general purpose replacement to vendor-specific GUIs like Keysight BenchVue, National Instruments NI-SCOPE, Liquid Instruments MokuOS, etc.
 
+![example screenshot](docs/example.png)
+
 ## Usage
 
 ### With uv (recommended)
