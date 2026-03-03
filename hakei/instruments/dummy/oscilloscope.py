@@ -1,7 +1,9 @@
 """Dummy oscilloscope implementation emulating a 100 MHz scope."""
 
 import logging
+import threading
 import time
+from collections import deque
 
 import numpy as np
 
@@ -9,6 +11,7 @@ from hakei.instruments.base import ConnectionState, InstrumentInfo
 from hakei.instruments.oscilloscope import (
     AcquisitionState,
     Coupling,
+    DisplayMode,
     Oscilloscope,
     TriggerEdge,
     TriggerMode,
@@ -17,66 +20,93 @@ from hakei.instruments.oscilloscope import (
 
 log = logging.getLogger(__name__)
 
-
 class DummyOscilloscope(Oscilloscope):
-    """Dummy oscilloscope emulating a 100 MHz scope.
+    """Dummy oscilloscope backed by a background generation thread."""
 
-    Generates continuous signals and captures data based on timebase,
-    trigger, and horizontal offset settings - just like a real scope.
-    """
+    num_channels: int = 4
+    chunk_period: float = 1e-3
 
-    # Dummy scope constraints (emulating a high-end scope)
-    MIN_SAMPLE_RATE = 1.0  # 1 Hz
-    MAX_SAMPLE_RATE = 100e6  # 100 MHz
-    MIN_BUFFER_SIZE = 100
-    MAX_BUFFER_SIZE = 100000
-    PREFERRED_BUFFER_SIZE = 10000
-
-    def __init__(self, resource_address: str = "DUMMY::OSC::1", num_channels: int = 4, device=None):
-        super().__init__(resource_address, num_channels, device=device)
+    def __init__(self, resource_address: str = "DUMMY::OSC::1", device=None):
+        super().__init__(resource_address, device=device)
+        self._buffer_size = int(1e9)
+        self._sample_rate = 10e3
         self._info = InstrumentInfo(
             manufacturer="Hakei",
             model="DummyScope-100MHz",
             serial_number="DUMMY001",
             firmware_version="1.0.0",
         )
-        # Oscilloscope internal clock (absolute time reference)
-        self._scope_time: float = 0.0
-        self._last_real_time: float = 0.0
+        self._acquisition_stop = threading.Event()
+        self._acquisition_thread: threading.Thread | None = None
+        self._buf_lock = threading.Lock()
+        self._buf_deques: list[deque[float]] = [
+            deque(maxlen=self._buffer_size)
+            for _ in range(self.num_channels)
+        ]
+        self._time = 0.0
 
-        # Acquisition state
-        self._acquisition_start_time: float = 0.0
-        self._last_trigger_time: float = 0.0  # Absolute scope time of last trigger
-        self._triggered: bool = False
-        self._capture_time: float = 0.0  # Scope time when current capture was taken
+        self._normal_snapshot: WaveformData | None = None
+        self._normal_next_k: int = 0
+
+    def _acquisition_loop(self) -> None:
+        nch = self.num_channels
+        next_wake = time.monotonic() + self.chunk_period
+        while not self._acquisition_stop.is_set():
+            sr = self._sample_rate
+            chunk_samples = max(
+                1, int(sr * self.chunk_period)
+            )
+            dt = 1.0 / sr
+            t_arr = self._time + np.arange(
+                chunk_samples, dtype=np.float64
+            ) * dt
+            vol = np.zeros(
+                (nch, chunk_samples), dtype=np.float64
+            )
+            for ch in range(nch):
+                if self._channel_configs[ch].enabled:
+                    vol[ch] = self._signal_value(
+                        ch + 1, t_arr
+                    )
+            with self._buf_lock:
+                for ch in range(nch):
+                    self._buf_deques[ch].extend(
+                        vol[ch].tolist()
+                    )
+            self._time = t_arr[-1] + dt
+            remaining = next_wake - time.monotonic()
+            if remaining > 0:
+                self._acquisition_stop.wait(
+                    timeout=remaining
+                )
+            next_wake += self.chunk_period
 
     def connect(self) -> bool:
-        """Connect to the dummy oscilloscope."""
         log.info("Connecting to dummy oscilloscope: %s", self.resource_address)
         self._state = ConnectionState.CONNECTING
         time.sleep(0.5)
         self._state = ConnectionState.CONNECTED
         self._acquisition_state = AcquisitionState.STOPPED
-
         self._channel_configs[0].enabled = True
         self._channel_configs[0].scale = 1.0
-        self.set_timebase_length(100e-3)  # 10ms/div, 100ms total
+        self.set_timebase_length(100e-3)
         self._timebase.offset = 0.0
-
-        self._scope_time = 0.0
-        self._last_real_time = time.time()
-
+        self._acquisition_stop.clear()
+        self._acquisition_thread = threading.Thread(target=self._acquisition_loop, daemon=True)
+        self._acquisition_thread.start()
         log.info("Dummy oscilloscope connected")
         return True
 
     def disconnect(self) -> None:
-        """Disconnect from the dummy oscilloscope."""
         log.info("Disconnecting from dummy oscilloscope")
+        self._acquisition_stop.set()
+        if self._acquisition_thread is not None:
+            self._acquisition_thread.join(timeout=2.0)
+            self._acquisition_thread = None
         self._state = ConnectionState.DISCONNECTED
         self._acquisition_state = AcquisitionState.STOPPED
 
     def reset(self) -> None:
-        """Reset the dummy oscilloscope."""
         log.info("Resetting dummy oscilloscope")
         for config in self._channel_configs:
             config.enabled = False
@@ -84,7 +114,7 @@ class DummyOscilloscope(Oscilloscope):
             config.offset = 0.0
             config.coupling = Coupling.DC
         self._channel_configs[0].enabled = True
-        self.set_timebase_length(100e-3)  # 10ms/div
+        self.set_timebase_length(100e-3)
         self._timebase.offset = 0.0
         self._trigger.source = 1
         self._trigger.mode = TriggerMode.AUTO
@@ -92,47 +122,45 @@ class DummyOscilloscope(Oscilloscope):
         self._trigger.level = 0.0
         self._trigger.enabled = False
         self._acquisition_state = AcquisitionState.STOPPED
-        self._scope_time = 0.0
-        self._last_real_time = time.time()
-
-    def _update_scope_time(self) -> None:
-        """Update internal scope time based on real elapsed time."""
-        now = time.time()
-        if self._acquisition_state == AcquisitionState.RUNNING:
-            self._scope_time += now - self._last_real_time
-        self._last_real_time = now
 
     def run(self) -> None:
-        """Start continuous acquisition."""
         self._acquisition_state = AcquisitionState.RUNNING
-        self._last_real_time = time.time()
-        self._acquisition_start_time = self._scope_time
-        self._triggered = False
+        self._normal_snapshot = None
+        with self._buf_lock:
+            N = len(self._buf_deques[0]) if self._buf_deques else 0
+        self._normal_next_k = N
         log.debug("Dummy oscilloscope: run")
 
+    def _apply_timebase_settings(self) -> None:
+        span = self._timebase.span
+        self._buffer_size = 10_000
+        self._sample_rate = self._buffer_size / span
+        self._normal_snapshot = None
+        with self._buf_lock:
+            for d in self._buf_deques:
+                d.clear()
+        self._normal_next_k = 0
+        self._time = 0.0
+
     def stop(self) -> None:
-        """Stop acquisition."""
-        self._update_scope_time()
         self._acquisition_state = AcquisitionState.STOPPED
+        with self._buf_lock:
+            for d in self._buf_deques:
+                d.clear()
+        self._normal_snapshot = None
+        self._normal_next_k = 0
+        self._time = 0.0
         log.debug("Dummy oscilloscope: stop")
 
     def single(self) -> None:
-        """Perform a single acquisition."""
         self._acquisition_state = AcquisitionState.SINGLE
-        self._last_real_time = time.time()
-        self._triggered = False
         log.debug("Dummy oscilloscope: single")
 
     def force_trigger(self) -> None:
-        """Force a trigger event."""
-        self._update_scope_time()
-        self._last_trigger_time = self._scope_time
-        self._triggered = True
+        self._acquisition_state = AcquisitionState.RUNNING
         log.debug("Dummy oscilloscope: force trigger")
 
     def auto_scale(self) -> None:
-        """Auto-scale channels."""
-        log.debug("Dummy oscilloscope: auto scale")
         for config in self._channel_configs:
             if config.enabled:
                 config.scale = 1.0
@@ -159,120 +187,236 @@ class DummyOscilloscope(Oscilloscope):
     def set_trigger_level(self, level: float) -> None:
         self._trigger.level = level
 
+    # ECG component parameters: (centre as fraction of RR interval,
+    #                              half-width in seconds, amplitude in V)
+    _ECG_WAVES: list[tuple[float, float, float]] = [
+        (0.12, 0.035, 0.15),   # P
+        (0.21, 0.008, -0.10),  # Q
+        (0.23, 0.010, 1.20),   # R
+        (0.25, 0.008, -0.25),  # S
+        (0.40, 0.050, 0.25),   # T
+    ]
+    _ECG_BPM: float = 72.0
+
+    def _ecg(self, t: np.ndarray) -> np.ndarray:
+        """Synthetic ECG (QRS complex) at ~72 BPM."""
+        rr = 60.0 / self._ECG_BPM
+        phase = np.mod(t, rr)
+        sig = np.zeros_like(t)
+        for centre_frac, width, amp in self._ECG_WAVES:
+            centre = centre_frac * rr
+            sig += amp * np.exp(
+                -0.5 * ((phase - centre) / width) ** 2
+            )
+        sig += 0.05 * np.random.randn(len(t))
+        return sig
+
     def _signal_value(self, channel: int, t: np.ndarray) -> np.ndarray:
-        """Calculate signal value at absolute time t.
-
-        This represents the continuous analog signal that exists
-        independent of when we sample it. Channel offset is applied
-        at the display level, not here.
-        """
+        """Signal at time t (continuous analog)."""
         if channel == 1:
-            # 50 Hz sine wave, 3V amplitude
-            voltage = 3.0 * np.sin(2 * np.pi * 50 * t)
-        elif channel == 2:
-            # 25 Hz square wave, 2V amplitude
-            voltage = 2.0 * np.sign(np.sin(2 * np.pi * 25 * t))
-        elif channel == 3:
-            # 10 Hz triangle wave, 2.5V amplitude
+            return 3.0 * np.sin(2 * np.pi * 50 * t)
+        if channel == 2:
+            return 2.0 * np.sign(np.sin(2 * np.pi * 25 * t))
+        if channel == 3:
             phase = (t * 10) % 1
-            voltage = 2.5 * (4 * np.abs(phase - 0.5) - 1)
-        elif channel == 4:
-            # 75 Hz sawtooth wave, 1.5V amplitude
-            phase = (t * 75) % 1
-            voltage = 1.5 * (2 * phase - 1)
-        else:
-            # Additional channels: noise
-            voltage = 0.5 * np.random.randn(len(t))
+            return 2.5 * (4 * np.abs(phase - 0.5) - 1)
+        if channel == 4:
+            return self._ecg(t)
+        return 0.5 * np.random.randn(len(t))
 
-        return voltage
+    def _read_buffer(self) -> tuple[int, list[list[float]]]:
+        """Snapshot the deque lengths and contents under lock.
 
-    def _find_trigger(self, t_start: float, t_end: float) -> float | None:
-        """Find trigger point in the given time range.
-
-        Returns the absolute time of the trigger, or None if not found.
+        Returns (N, channel_lists) where N is the number of
+        samples per channel and channel_lists[c] is a plain list
+        for channel c.
         """
-        # Sample the trigger source channel at high resolution
-        num_search_points = 10000
-        t = np.linspace(t_start, t_end, num_search_points)
-        signal = self._signal_value(self._trigger.source, t)
+        with self._buf_lock:
+            N = (
+                len(self._buf_deques[0])
+                if self._buf_deques
+                else 0
+            )
+            if N == 0:
+                return 0, []
+            channel_lists = [
+                list(self._buf_deques[c])
+                for c in range(self.num_channels)
+            ]
+        return N, channel_lists
 
-        level = self._trigger.level
-        above = signal > level
-        edges = np.diff(above.astype(int))
+    def _slice(
+        self,
+        channel_lists: list[list[float]],
+        k_start: int,
+        k_end: int,
+    ) -> np.ndarray:
+        """Extract a slice from the buffer.
 
-        if self._trigger.edge == TriggerEdge.RISING:
-            crossings = np.where(edges == 1)[0]
-        elif self._trigger.edge == TriggerEdge.FALLING:
-            crossings = np.where(edges == -1)[0]
-        else:  # EITHER
-            crossings = np.where(edges != 0)[0]
-
-        if len(crossings) == 0:
-            return None
-
-        # Return the first trigger point
-        return t[crossings[0]]
-
-    def get_waveform(self, channel: int) -> WaveformData:
-        """Acquire waveform data from a channel.
-
-        Emulates real oscilloscope behavior:
-        - Updates internal clock
-        - Searches for trigger (if enabled)
-        - Returns data for the requested view window
-        - View window is centered at timebase.offset with width = scale * 10
+        Returns voltage array of shape (num_channels, count).
         """
-        self._update_scope_time()
+        return np.array(
+            [
+                channel_lists[c][k_start : k_end + 1]
+                for c in range(self.num_channels)
+            ],
+            dtype=np.float64,
+        )
 
-        # Calculate display window parameters
-        total_time = self._timebase.scale * 10  # 10 divisions
-
-        # The display window in "display time" (what the UI shows)
-        # Centered at offset, spanning total_time
-        t_display_start = self._timebase.offset - total_time / 2
-        t_display_end = self._timebase.offset + total_time / 2
-        t_display = np.linspace(t_display_start, t_display_end, self._buffer_size)
-
-        # Determine the reference time for signal generation
-        if self._trigger.enabled:
-            # Search for trigger in recent signal
-            search_start = self._scope_time - total_time * 2
-            search_end = self._scope_time
-
-            trigger_time = self._find_trigger(search_start, search_end)
-
-            if trigger_time is not None:
-                self._last_trigger_time = trigger_time
-                self._triggered = True
-                # Reference time: trigger occurs at t=0 in signal coordinates
-                reference_time = trigger_time
-            elif self._trigger.mode == TriggerMode.AUTO:
-                # Auto mode - use current scope time as reference
-                reference_time = self._scope_time
-            else:
-                # Normal/Single mode - use last trigger time
-                if self._triggered:
-                    reference_time = self._last_trigger_time
-                else:
-                    reference_time = self._scope_time
-        else:
-            # No trigger - free running
-            # Reference time advances with scope time, so signal appears to move
-            reference_time = self._scope_time
-
-        # Calculate absolute times for sampling
-        # t_display represents where on screen each point appears
-        # t_absolute is the actual signal time to sample
-        # When t_display=0, we sample at reference_time
-        t_absolute = reference_time + t_display
-
-        # Sample the signal at these absolute times
-        voltage = self._signal_value(channel, t_absolute)
-
-        return WaveformData(
-            channel=channel,
-            time=t_display,
-            voltage=voltage,
+    def get_waveform(self) -> WaveformData:
+        """Return voltage data whose shape depends on display mode."""
+        nch = self.num_channels
+        screen_samples = self._buffer_size
+        empty = WaveformData(
+            voltage=np.zeros((nch, 0), dtype=np.float64),
             sample_rate=self._sample_rate,
-            num_points=self._buffer_size,
+            num_points=0,
+            num_channels=nch,
+        )
+
+        N, ch_lists = self._read_buffer()
+        if N == 0:
+            return empty
+
+        mode = self._display_mode
+
+        if mode == DisplayMode.NORMAL:
+            return self._get_waveform_normal(
+                N, ch_lists, screen_samples, empty,
+            )
+        if mode == DisplayMode.ROLL:
+            return self._get_waveform_roll(
+                N, ch_lists, screen_samples, empty,
+            )
+        # SCREEN
+        return self._get_waveform_screen(
+            N, ch_lists, screen_samples, empty,
+        )
+
+    # ----------------------------------------------------------
+    # NORMAL: return empty until a full screen is ready, then
+    # keep returning the same snapshot until the *next* full
+    # screen of data has been generated.  When a trigger is
+    # enabled, the screen is aligned to the trigger event.
+    # ----------------------------------------------------------
+    def _get_waveform_normal(
+        self,
+        N: int,
+        ch_lists: list[list[float]],
+        screen_samples: int,
+        empty: WaveformData,
+    ) -> WaveformData:
+        k_start = self._normal_next_k
+
+        if self._trigger.enabled:
+            trig_k = self._find_trigger(
+                ch_lists, k_start, N,
+            )
+            if trig_k is None:
+                if self._normal_snapshot is not None:
+                    return self._normal_snapshot
+                return empty
+            offset = int(self._trigger.position * self._sample_rate)
+            k_start = max(0, trig_k - offset)
+
+        k_end = k_start + screen_samples - 1
+        if k_end >= N:
+            if self._normal_snapshot is not None:
+                return self._normal_snapshot
+            return empty
+        vol = self._slice(ch_lists, k_start, k_end)
+        self._normal_snapshot = WaveformData(
+            voltage=vol,
+            sample_rate=self._sample_rate,
+            num_points=vol.shape[1],
+            num_channels=self.num_channels,
+        )
+        holdoff_samples = int(
+            self._trigger.holdoff * self._sample_rate
+        )
+        self._normal_next_k = k_end + 1 + holdoff_samples
+        return self._normal_snapshot
+
+    def _find_trigger(
+        self,
+        ch_lists: list[list[float]],
+        k_start: int,
+        N: int,
+    ) -> int | None:
+        """Find the first trigger crossing at or after k_start.
+
+        Returns the buffer index of the crossing, or None.
+        """
+        ch_idx = self._trigger.source - 1
+        if ch_idx < 0 or ch_idx >= self.num_channels:
+            return None
+        level = self._trigger.level
+        edge = self._trigger.edge
+        data = ch_lists[ch_idx]
+        for k in range(max(1, k_start), N):
+            prev = data[k - 1]
+            cur = data[k]
+            if edge == TriggerEdge.RISING:
+                if prev < level <= cur:
+                    return k
+            elif edge == TriggerEdge.FALLING:
+                if prev > level >= cur:
+                    return k
+            else:  # EITHER
+                if (prev < level <= cur) or (
+                    prev > level >= cur
+                ):
+                    return k
+        return None
+
+    # ----------------------------------------------------------
+    # ROLL: return partial data from _normal_next_k up to the
+    # latest sample (or a full screen, whichever is smaller).
+    # ----------------------------------------------------------
+    def _get_waveform_roll(
+        self,
+        N: int,
+        ch_lists: list[list[float]],
+        screen_samples: int,
+        empty: WaveformData,
+    ) -> WaveformData:
+        k_start = self._normal_next_k
+        available = N - k_start
+        if available <= 0:
+            return empty
+        k_end = min(
+            k_start + screen_samples - 1,
+            N - 1,
+        )
+        vol = self._slice(ch_lists, k_start, k_end)
+        # Once a full screen is filled, advance the cursor
+        if k_end - k_start + 1 >= screen_samples:
+            self._normal_next_k = k_end + 1
+        return WaveformData(
+            voltage=vol,
+            sample_rate=self._sample_rate,
+            num_points=vol.shape[1],
+            num_channels=self.num_channels,
+        )
+
+    # ----------------------------------------------------------
+    # SCREEN: always return the most recent slice (up to a full
+    # screen worth).
+    # ----------------------------------------------------------
+    def _get_waveform_screen(
+        self,
+        N: int,
+        ch_lists: list[list[float]],
+        screen_samples: int,
+        empty: WaveformData,
+    ) -> WaveformData:
+        count = min(screen_samples, N)
+        k_start = N - count
+        k_end = N - 1
+        vol = self._slice(ch_lists, k_start, k_end)
+        return WaveformData(
+            voltage=vol,
+            sample_rate=self._sample_rate,
+            num_points=vol.shape[1],
+            num_channels=self.num_channels,
         )

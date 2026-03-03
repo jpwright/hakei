@@ -404,13 +404,17 @@ def _open_instruments_from_config(config: HakeiConfig) -> None:
             for inst_class in dummy_classes:
                 config_class = inst_class.get_config_class()
                 if config_class is not None and isinstance(inst_config, config_class):
-                    num_channels = len(getattr(inst_config, "channels", [])) or inst_class.default_channels
-                    instrument = inst_class(address, num_channels=num_channels)
+                    if issubclass(inst_class, Oscilloscope):
+                        instrument = inst_class(address)
+                    else:
+                        num_channels = len(getattr(inst_config, "channels", [])) or inst_class.default_channels
+                        instrument = inst_class(address, num_channels=num_channels)
                     _open_instruments[address] = instrument
 
                     panel_class = inst_class.get_panel_class()
                     panel_kwargs = {}
-                    if issubclass(inst_class, (PowerSupply, WaveformGenerator, Oscilloscope)):
+                    if issubclass(inst_class, (PowerSupply, WaveformGenerator)):
+                        num_channels = len(getattr(inst_config, "channels", [])) or inst_class.default_channels
                         panel_kwargs["num_channels"] = num_channels
                     panel = panel_class(instrument=instrument, **panel_kwargs)
                     panel.setup()

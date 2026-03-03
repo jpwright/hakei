@@ -47,22 +47,16 @@ trigcondFallingNegative = c_int(1)
 class DigilentOscilloscope(Oscilloscope):
     """Oscilloscope implementation for Digilent devices."""
 
-    # AD2 constraints
-    MIN_SAMPLE_RATE = 1.0  # 1 Hz
-    MAX_SAMPLE_RATE = 100e6  # 100 MHz
-    MIN_BUFFER_SIZE = 100
-    MAX_BUFFER_SIZE = 8192  # AD2 buffer limit
-    PREFERRED_BUFFER_SIZE = 8192
+    num_channels: int = 2
+    AD2_BUFFER_SIZE = 8192
 
     def __init__(
         self,
         resource_address: str,
         device: DigilentDevice,
-        num_channels: int = 2,
     ):
-        super().__init__(resource_address, num_channels, device=device)
+        super().__init__(resource_address, device=device)
         self._timebase.offset = 0.0
-        # Set initial timebase (10ms/div = 100ms total)
         self.set_timebase_length(100e-3)
 
     @property
@@ -77,13 +71,19 @@ class DigilentOscilloscope(Oscilloscope):
 
     def _apply_timebase_settings(self) -> None:
         """Apply sample rate and buffer size to hardware."""
+        self._buffer_size = self.AD2_BUFFER_SIZE
+        self._sample_rate = self._buffer_size / self._timebase.span
         dwf = self._get_dwf()
         if dwf:
-            dwf.FDwfAnalogInFrequencySet(self.hdwf, c_double(self._sample_rate))
-            dwf.FDwfAnalogInBufferSizeSet(self.hdwf, c_int(self._buffer_size))
+            dwf.FDwfAnalogInFrequencySet(
+                self.hdwf, c_double(self._sample_rate),
+            )
+            dwf.FDwfAnalogInBufferSizeSet(
+                self.hdwf, c_int(self._buffer_size),
+            )
             log.debug(
-                "Timebase: %.3f ms/div, sample_rate=%.0f Hz, buffer=%d",
-                self._timebase.scale * 1000, self._sample_rate, self._buffer_size
+                "Timebase: span=%.3f ms, sample_rate=%.0f Hz, buffer=%d",
+                self._timebase.span * 1000, self._sample_rate, self._buffer_size
             )
             # Restart acquisition if running
             if self._acquisition_state == AcquisitionState.RUNNING:
@@ -106,8 +106,8 @@ class DigilentOscilloscope(Oscilloscope):
         self._apply_timebase_settings()
 
         log.info(
-            "Configuring acquisition: timebase=%.3f ms/div, sample_rate=%.0f Hz, buffer=%d",
-            self._timebase.scale * 1000, self._sample_rate, self._buffer_size
+            "Configuring acquisition: span=%.3f ms, sample_rate=%.0f Hz, buffer=%d",
+            self._timebase.span * 1000, self._sample_rate, self._buffer_size
         )
 
         # Enable channels by default with ±5V range
@@ -157,10 +157,20 @@ class DigilentOscilloscope(Oscilloscope):
             else:
                 dwf.FDwfAnalogInTriggerAutoTimeoutSet(self.hdwf, c_double(0.0))
             
+            dwf.FDwfAnalogInTriggerPositionSet(
+                self.hdwf, c_double(self._trigger.position),
+            )
+
+            dwf.FDwfAnalogInTriggerHoldOffSet(
+                self.hdwf, c_double(self._trigger.holdoff),
+            )
+
             log.info(
-                "Trigger configured: CH%d, level=%.3fV, edge=%s, mode=%s",
+                "Trigger configured: CH%d, level=%.3fV, edge=%s, "
+                "mode=%s, position=%.2f, holdoff=%.3fs",
                 self._trigger.source, self._trigger.level,
-                self._trigger.edge.name, self._trigger.mode.name
+                self._trigger.edge.name, self._trigger.mode.name,
+                self._trigger.position, self._trigger.holdoff,
             )
         else:
             # Use scan screen mode for free-running acquisition
@@ -179,8 +189,7 @@ class DigilentOscilloscope(Oscilloscope):
             self.set_channel_enabled(ch, False)
             self.set_channel_scale(ch, 1.0)
             self.set_channel_offset(ch, 0.0)
-        # Default: 10ms/div = 100ms total window (-50ms to +50ms)
-        self.set_timebase_scale(10e-3)
+        self.set_timebase_span(100e-3)
         self._timebase.offset = 0.0
 
     def run(self) -> None:
@@ -219,8 +228,7 @@ class DigilentOscilloscope(Oscilloscope):
         for ch in range(1, self.num_channels + 1):
             self.set_channel_enabled(ch, True)
             self.set_channel_scale(ch, 1.0)
-        # Default: 10ms/div = 100ms total window
-        self.set_timebase_scale(10e-3)
+        self.set_timebase_span(100e-3)
 
     def set_channel_enabled(self, channel: int, enabled: bool) -> None:
         """Enable or disable a channel."""
@@ -277,73 +285,73 @@ class DigilentOscilloscope(Oscilloscope):
         if dwf:
             dwf.FDwfAnalogInTriggerLevelSet(self.hdwf, c_double(level))
 
-    def get_waveform(self, channel: int) -> WaveformData:
-        """Acquire waveform data from a channel."""
-        ch_idx = channel - 1
+    def set_trigger_position(self, position: float) -> None:
+        """Set trigger position and push to hardware."""
+        super().set_trigger_position(position)
         dwf = self._get_dwf()
+        if dwf and self._trigger.enabled:
+            dwf.FDwfAnalogInTriggerPositionSet(
+                self.hdwf, c_double(self._trigger.position),
+            )
+
+    def set_trigger_holdoff(self, holdoff: float) -> None:
+        """Set trigger holdoff and push to hardware."""
+        super().set_trigger_holdoff(holdoff)
+        dwf = self._get_dwf()
+        if dwf and self._trigger.enabled:
+            dwf.FDwfAnalogInTriggerHoldOffSet(
+                self.hdwf, c_double(self._trigger.holdoff),
+            )
+
+    def get_waveform(self) -> WaveformData:
+        """Acquire waveform data for all channels."""
+        dwf = self._get_dwf()
+        nch = self.num_channels
 
         empty_result = WaveformData(
-            channel=channel,
-            time=np.array([]),
-            voltage=np.array([]),
+            voltage=np.zeros((nch, 0), dtype=np.float64),
+            num_points=0,
+            num_channels=nch,
         )
 
         if not dwf:
-            log.warning("CH%d: DWF not available", channel)
+            log.warning("DWF not available")
             return empty_result
 
         # Read status and trigger data fetch
         state = c_int()
         dwf.FDwfAnalogInStatus(self.hdwf, c_int(1), byref(state))
 
-        # Handle triggered vs free-running acquisition differently
         if self._trigger.enabled:
-            # In triggered mode, wait for Done state (acquisition complete after trigger)
             if state.value != DwfStateDone.value:
-                # Still waiting for trigger or acquiring
-                log.debug("CH%d: state=%d, waiting for trigger", channel, state.value)
+                log.debug("state=%d, waiting for trigger", state.value)
                 return empty_result
-            
-            # Acquisition complete, read the full buffer
-            data = (c_double * self._buffer_size)()
-            dwf.FDwfAnalogInStatusData(self.hdwf, c_int(ch_idx), data, self._buffer_size)
-            raw_samples = np.array(data[:], dtype=np.float64)
-            
-            # Re-arm for next trigger if running continuously
+            num_samples = self._buffer_size
             if self._acquisition_state == AcquisitionState.RUNNING:
                 dwf.FDwfAnalogInConfigure(self.hdwf, c_int(0), c_int(1))
         else:
-            # Free-running mode: check if buffer has data
             samples_valid = c_int()
             dwf.FDwfAnalogInStatusSamplesValid(self.hdwf, byref(samples_valid))
-
             if samples_valid.value == 0:
-                log.debug("CH%d: state=%d, no samples yet", channel, state.value)
+                log.debug("state=%d, no samples yet", state.value)
                 return empty_result
-
-            # Read all available samples from buffer
             num_samples = min(samples_valid.value, self._buffer_size)
-            data = (c_double * num_samples)()
+
+        # Read all channels: voltage shape (num_channels, num_points)
+        voltage = np.zeros((nch, num_samples), dtype=np.float64)
+        data = (c_double * num_samples)()
+        for ch_idx in range(nch):
             dwf.FDwfAnalogInStatusData(self.hdwf, c_int(ch_idx), data, num_samples)
-            raw_samples = np.array(data[:], dtype=np.float64)
-
-        samples = raw_samples
-
-        # Calculate time array based on current timebase settings
-        total_time = self._timebase.scale * 10
-        t_start = self._timebase.offset - total_time / 2
-        t_end = self._timebase.offset + total_time / 2
-        time = np.linspace(t_start, t_end, len(samples))
+            voltage[ch_idx] = np.array(data[:], dtype=np.float64)
 
         log.debug(
-            "CH%d: %d samples, voltage [%.3f, %.3f]",
-            channel, len(samples), samples.min(), samples.max()
+            "%d ch, %d samples",
+            nch, num_samples
         )
 
         return WaveformData(
-            channel=channel,
-            time=time,
-            voltage=samples,
+            voltage=voltage,
             sample_rate=self._sample_rate,
-            num_points=len(samples),
+            num_points=num_samples,
+            num_channels=nch,
         )

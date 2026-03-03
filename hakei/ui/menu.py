@@ -79,7 +79,7 @@ def _on_load_file_selected(selected_files: list[str]):
 def _on_about():
     """Show the About dialog with version info."""
     ver = _get_version()
-    with dpg.window(label="about", modal=True, tag="about_window"):
+    with dpg.window(label="about", tag="about_window", modal=True):
         with dpg.table(header_row=False, policy=dpg.mvTable_SizingStretchProp):
             dpg.add_table_column()
             dpg.add_table_column()

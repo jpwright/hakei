@@ -44,12 +44,15 @@ class OscilloscopeConfig(BaseModel):
     type: Literal["oscilloscope"] = "oscilloscope"
     resource_address: str
     channels: list[OscilloscopeChannelConfig] = Field(default_factory=list)
-    timebase_scale: float = 1e-3
+    timebase_span: float = 10e-3
     trigger_enabled: bool = False
     trigger_source: int = 1
     trigger_mode: str = "AUTO"
     trigger_edge: str = "RISING"
     trigger_level: float = 0.0
+    trigger_position: float = 0.0
+    trigger_holdoff: float = 0.0
+    display_mode: str = "NORMAL"
     # Axis limits (UI state)
     x_axis_min: float = -10.0
     x_axis_max: float = 10.0
@@ -240,12 +243,15 @@ def build_config_from_instruments(
                         coupling=ch_config.coupling.name,
                     )
                 )
-            osc_config.timebase_scale = instrument.timebase.scale
+            osc_config.timebase_span = instrument.timebase.span
             osc_config.trigger_enabled = instrument.trigger.enabled
             osc_config.trigger_source = instrument.trigger.source
             osc_config.trigger_mode = instrument.trigger.mode.name
             osc_config.trigger_edge = instrument.trigger.edge.name
             osc_config.trigger_level = instrument.trigger.level
+            osc_config.trigger_position = instrument.trigger.position
+            osc_config.trigger_holdoff = instrument.trigger.holdoff
+            osc_config.display_mode = instrument.display_mode.name
             # Get axis limits from panel if available
             panel = panels.get(address)
             if panel and hasattr(panel, 'get_axis_limits'):
@@ -308,7 +314,7 @@ def apply_config_to_instrument(instrument: Any, config: InstrumentConfig) -> Non
                 except KeyError:
                     pass
 
-        instrument.set_timebase_scale(config.timebase_scale)
+        instrument.set_timebase_span(config.timebase_span)
         instrument.set_trigger_source(config.trigger_source)
         try:
             mode = TriggerMode[config.trigger_mode]
@@ -321,7 +327,15 @@ def apply_config_to_instrument(instrument: Any, config: InstrumentConfig) -> Non
         except KeyError:
             pass
         instrument.set_trigger_level(config.trigger_level)
+        instrument.set_trigger_position(config.trigger_position)
+        instrument.set_trigger_holdoff(config.trigger_holdoff)
         instrument.set_trigger_enabled(config.trigger_enabled)
+
+        from hakei.instruments.oscilloscope import DisplayMode
+        try:
+            instrument.set_display_mode(DisplayMode[config.display_mode])
+        except KeyError:
+            pass
 
     elif isinstance(instrument, WaveformGenerator) and isinstance(
         config, WaveformGeneratorConfig

@@ -1,10 +1,8 @@
 """Oscilloscope view and controls."""
 
 import logging
-import time
 
 import dearpygui.dearpygui as dpg
-import numpy as np
 
 from hakei.instruments.oscilloscope import (
     AcquisitionState,
@@ -39,11 +37,9 @@ TRIGGER_EDGE_MAP = {
 
 DISPLAY_MODE_MAP = {
     "Normal": DisplayMode.NORMAL,
+    "Roll": DisplayMode.ROLL,
     "Screen": DisplayMode.SCREEN,
 }
-
-# Threshold for auto-roll: if x-axis span > 1 second, use roll behavior
-AUTO_ROLL_THRESHOLD_MS = 1000.0
 
 # ImPlot "Deep" colormap colors (default)
 CHANNEL_COLORS = [
@@ -235,7 +231,7 @@ class OscilloscopePanel(InstrumentPanel):
 
     _instance_counter = 0
 
-    def __init__(self, instrument: Oscilloscope | None = None, num_channels: int = 2):
+    def __init__(self, instrument: Oscilloscope | None = None):
         # Generate unique tag for this panel instance
         OscilloscopePanel._instance_counter += 1
         instance_id = OscilloscopePanel._instance_counter
@@ -247,30 +243,21 @@ class OscilloscopePanel(InstrumentPanel):
             preferred_height=500,
             instrument=instrument,
         )
-        self._num_channels = num_channels
+        nch = instrument.num_channels if instrument else 4
+        self._num_channels = nch
         self._channels: list[OscilloscopeChannel] = []
         self._running = False
         self._update_registered = False
         self._last_x_min = -50.0
         self._last_x_max = 50.0
         self._display_mode = DisplayMode.NORMAL
-        self._using_roll_behavior = False  # Track if currently using roll behavior
-
-        # Buffers for roll/screen modes
-        self._roll_time: dict[int, list[float]] = {}
-        self._roll_voltage: dict[int, list[float]] = {}
-        self._roll_start_time: float = 0.0
-        self._last_sample_time: float = 0.0
-
 
         # Initialize channels
-        for i in range(num_channels):
+        for i in range(nch):
             color = CHANNEL_COLORS[i % len(CHANNEL_COLORS)]
             self._channels.append(
                 OscilloscopeChannel(i + 1, panel=self, color=color)
             )
-            self._roll_time[i + 1] = []
-            self._roll_voltage[i + 1] = []
 
     @property
     def window_tag(self) -> str:
@@ -325,6 +312,18 @@ class OscilloscopePanel(InstrumentPanel):
         return f"{self.tag}_trigger_drag_line"
 
     @property
+    def _trigger_pos_tag(self) -> str:
+        return f"{self.tag}_trigger_pos"
+
+    @property
+    def _trigger_pos_drag_tag(self) -> str:
+        return f"{self.tag}_trigger_pos_drag"
+
+    @property
+    def _trigger_holdoff_tag(self) -> str:
+        return f"{self.tag}_trigger_holdoff"
+
+    @property
     def _roll_cursor_tag(self) -> str:
         return f"{self.tag}_roll_cursor"
 
@@ -338,7 +337,6 @@ class OscilloscopePanel(InstrumentPanel):
             dpg.configure_item(self._run_btn_tag, label="Run")
         else:
             self._running = True
-            self._clear_roll_buffers()
             if self.instrument and hasattr(self.instrument, 'run'):
                 self.instrument.run()
             dpg.set_value(self._status_tag, "Status: Running")
@@ -415,9 +413,45 @@ class OscilloscopePanel(InstrumentPanel):
         """Handle trigger enable/disable."""
         if self.instrument and hasattr(self.instrument, 'set_trigger_enabled'):
             self.instrument.set_trigger_enabled(value)
-        # Show/hide trigger drag line
         if dpg.does_item_exist(self._trigger_drag_line_tag):
-            dpg.configure_item(self._trigger_drag_line_tag, show=value)
+            dpg.configure_item(
+                self._trigger_drag_line_tag, show=value,
+            )
+        if dpg.does_item_exist(self._trigger_pos_drag_tag):
+            dpg.configure_item(
+                self._trigger_pos_drag_tag, show=value,
+            )
+
+    def _on_trigger_position(self, sender: str, value: float) -> None:
+        """Handle trigger position change from slider."""
+        if self.instrument:
+            self.instrument.set_trigger_position(value)
+        self._update_trigger_pos_drag()
+
+    def _on_trigger_holdoff(self, sender: str, value: float) -> None:
+        """Handle trigger holdoff change."""
+        if self.instrument:
+            self.instrument.set_trigger_holdoff(value)
+
+    def _on_trigger_pos_drag(self, sender: str, app_data) -> None:
+        """Handle trigger position change from drag line."""
+        x_ms = dpg.get_value(sender)
+        if x_ms is None or not self.instrument:
+            return
+        pos_s = max(0.0, float(x_ms) / 1000.0)
+        self.instrument.set_trigger_position(pos_s)
+        if dpg.does_item_exist(self._trigger_pos_tag):
+            dpg.set_value(self._trigger_pos_tag, pos_s)
+
+    def _update_trigger_pos_drag(self) -> None:
+        """Sync the vertical trigger-position drag line."""
+        if (
+            not self.instrument
+            or not dpg.does_item_exist(self._trigger_pos_drag_tag)
+        ):
+            return
+        pos_s = self.instrument.trigger.position
+        dpg.set_value(self._trigger_pos_drag_tag, pos_s * 1000.0)
 
     def _on_trigger_edge(self, sender: str, value: str) -> None:
         """Handle trigger edge change."""
@@ -428,19 +462,12 @@ class OscilloscopePanel(InstrumentPanel):
         """Handle display mode change."""
         if value in DISPLAY_MODE_MAP:
             self._display_mode = DISPLAY_MODE_MAP[value]
-            self._clear_roll_buffers()
-            self._using_roll_behavior = False
-            # Roll cursor visibility is now managed by _update_waveforms based on auto-roll
+            if self.instrument:
+                self.instrument.set_display_mode(self._display_mode)
             if dpg.does_item_exist(self._roll_cursor_tag):
-                dpg.configure_item(self._roll_cursor_tag, show=False)
-
-    def _clear_roll_buffers(self) -> None:
-        """Clear the roll/screen mode buffers."""
-        for ch in self._roll_time:
-            self._roll_time[ch] = []
-            self._roll_voltage[ch] = []
-        self._roll_start_time = time.time()
-        self._last_sample_time = 0.0
+                dpg.configure_item(
+                    self._roll_cursor_tag, show=(self._display_mode == DisplayMode.ROLL)
+                )
 
     def _build_ui(self) -> None:
         # Control bar
@@ -516,6 +543,18 @@ class OscilloscopePanel(InstrumentPanel):
                 parent=self._plot_tag,
             )
 
+            # Trigger position (vertical drag line)
+            dpg.add_drag_line(
+                label="Trig Pos",
+                tag=self._trigger_pos_drag_tag,
+                color=(255, 255, 255, 150),
+                default_value=0.0,
+                vertical=True,
+                show=False,
+                callback=self._on_trigger_pos_drag,
+                parent=self._plot_tag,
+            )
+
             # Roll mode cursor (vertical line showing data edge)
             dpg.add_drag_line(
                 label="",
@@ -549,7 +588,7 @@ class OscilloscopePanel(InstrumentPanel):
             # Trigger module
             with dpg.child_window(
                 width=300,
-                height=180,
+                height=210,
                 no_scrollbar=True,
                 border=True,
             ):
@@ -603,6 +642,31 @@ class OscilloscopePanel(InstrumentPanel):
                         callback=self._on_trigger_level,
                     )
 
+                with dpg.group(horizontal=True):
+                    dpg.add_text("Position:")
+                    dpg.add_input_float(
+                        width=80,
+                        default_value=0.0,
+                        step=0,
+                        min_value=0.0,
+                        min_clamped=True,
+                        tag=self._trigger_pos_tag,
+                        callback=self._on_trigger_position,
+                    )
+                    dpg.add_text("s")
+
+                with dpg.group(horizontal=True):
+                    dpg.add_text("Holdoff:")
+                    dpg.add_input_float(
+                        width=80,
+                        default_value=0.0,
+                        step=0,
+                        min_value=0.0,
+                        tag=self._trigger_holdoff_tag,
+                        callback=self._on_trigger_holdoff,
+                    )
+                    dpg.add_text("s")
+
     def setup(self) -> None:
         """Set up the panel and register update callback."""
         super().setup()
@@ -617,27 +681,53 @@ class OscilloscopePanel(InstrumentPanel):
             self._update_registered = True
 
     def _on_connected(self) -> None:
-        """Sync all channels and trigger settings when instrument connects."""
+        """Sync all UI from instrument state after connection."""
         for ch in self._channels:
             ch.sync_from_instrument()
-        
+
+        if not self.instrument:
+            return
+
+        # Sync display mode
+        mode = self.instrument.display_mode
+        self._display_mode = mode
+        mode_label = mode.name.capitalize()
+        if dpg.does_item_exist(self._display_mode_tag):
+            dpg.set_value(self._display_mode_tag, mode_label)
+        if dpg.does_item_exist(self._roll_cursor_tag):
+            dpg.configure_item(
+                self._roll_cursor_tag,
+                show=(mode == DisplayMode.ROLL),
+            )
+
         # Sync trigger settings
-        if self.instrument and hasattr(self.instrument, 'trigger'):
-            trigger = self.instrument.trigger
-            if dpg.does_item_exist(self._trigger_enable_tag):
-                dpg.set_value(self._trigger_enable_tag, trigger.enabled)
-            if dpg.does_item_exist(self._trigger_level_tag):
-                dpg.set_value(self._trigger_level_tag, trigger.level)
-            if dpg.does_item_exist(self._trigger_source_tag):
-                dpg.set_value(self._trigger_source_tag, f"CH{trigger.source}")
-            if dpg.does_item_exist(self._trigger_edge_tag):
-                dpg.set_value(self._trigger_edge_tag, trigger.edge.name.capitalize())
-            if dpg.does_item_exist(self._trigger_mode_tag):
-                dpg.set_value(self._trigger_mode_tag, trigger.mode.name.capitalize())
-            # Update trigger drag line visibility and position
-            if dpg.does_item_exist(self._trigger_drag_line_tag):
-                dpg.configure_item(self._trigger_drag_line_tag, show=trigger.enabled)
-            self._update_trigger_drag_line()
+        trigger = self.instrument.trigger
+        if dpg.does_item_exist(self._trigger_enable_tag):
+            dpg.set_value(self._trigger_enable_tag, trigger.enabled)
+        if dpg.does_item_exist(self._trigger_level_tag):
+            dpg.set_value(self._trigger_level_tag, trigger.level)
+        if dpg.does_item_exist(self._trigger_source_tag):
+            dpg.set_value(self._trigger_source_tag, f"CH{trigger.source}")
+        if dpg.does_item_exist(self._trigger_edge_tag):
+            dpg.set_value(self._trigger_edge_tag, trigger.edge.name.capitalize())
+        if dpg.does_item_exist(self._trigger_mode_tag):
+            dpg.set_value(self._trigger_mode_tag, trigger.mode.name.capitalize())
+        if dpg.does_item_exist(self._trigger_pos_tag):
+            dpg.set_value(self._trigger_pos_tag, trigger.position)
+        if dpg.does_item_exist(self._trigger_holdoff_tag):
+            dpg.set_value(self._trigger_holdoff_tag, trigger.holdoff)
+        if dpg.does_item_exist(self._trigger_drag_line_tag):
+            dpg.configure_item(
+                self._trigger_drag_line_tag,
+                show=trigger.enabled,
+            )
+        if dpg.does_item_exist(self._trigger_pos_drag_tag):
+            dpg.configure_item(
+                self._trigger_pos_drag_tag,
+                show=trigger.enabled,
+            )
+        self._update_trigger_drag_line()
+        self._update_trigger_pos_drag()
 
     def get_axis_limits(self) -> tuple[tuple[float, float], tuple[float, float]]:
         """Get current axis limits for saving to config.
@@ -720,23 +810,18 @@ class OscilloscopePanel(InstrumentPanel):
             self._last_x_min = x_min
             self._last_x_max = x_max
 
-            # Restart roll mode when axis changes
-            if self._display_mode == DisplayMode.ROLL:
-                self._clear_roll_buffers()
-
-            total_time_ms = x_max - x_min
-            total_time_s = total_time_ms / 1000.0
-            scale = total_time_s / 10.0
+            span_ms = x_max - x_min
+            span_s = span_ms / 1000.0
 
             center_ms = (x_min + x_max) / 2.0
             offset = center_ms / 1000.0
 
             log.debug(
-                "Updating timebase: scale=%.3f ms/div, position=%.3f ms, span=%.3f ms",
-                scale * 1000, offset * 1000, total_time_s * 1000
+                "Updating timebase: span=%.3f ms, offset=%.3f ms",
+                span_ms, center_ms,
             )
 
-            self.instrument.set_timebase_scale(scale)
+            self.instrument.set_timebase_span(span_s)
             self.instrument.set_timebase_offset(offset)
 
     def _update_waveforms(self) -> None:
@@ -750,136 +835,52 @@ class OscilloscopePanel(InstrumentPanel):
         ):
             return
 
-        if self._display_mode == DisplayMode.NORMAL:
-            # Auto-switch between normal and roll behavior based on time span
-            x_min, x_max = dpg.get_axis_limits(self._x_axis_tag)
-            span_ms = x_max - x_min
-            use_roll = span_ms > AUTO_ROLL_THRESHOLD_MS
-            
-            # Clear buffers when switching between modes
-            if use_roll != self._using_roll_behavior:
-                self._clear_roll_buffers()
-                self._using_roll_behavior = use_roll
-            
-            # Update roll cursor visibility
-            if dpg.does_item_exist(self._roll_cursor_tag):
-                dpg.configure_item(self._roll_cursor_tag, show=use_roll)
-            
-            if use_roll:
-                self._update_roll_mode()
-            else:
-                self._update_normal_mode()
-        elif self._display_mode == DisplayMode.SCREEN:
-            # Hide roll cursor in screen mode
-            if dpg.does_item_exist(self._roll_cursor_tag):
-                dpg.configure_item(self._roll_cursor_tag, show=False)
-            self._using_roll_behavior = False
-            self._update_screen_mode()
-
-    def _update_normal_mode(self) -> None:
-        """Normal mode: wait for full screen, then refresh."""
         self._update_timebase_from_axis()
 
+        waveform = self.instrument.get_waveform()
+        if waveform.num_points == 0:
+            for ch in self._channels:
+                dpg.set_value(ch.series_tag, [[], []])
+            return
+
+        x_min = dpg.get_axis_limits(self._x_axis_tag)[0]
+        n = waveform.num_points
+        sr = waveform.sample_rate
+        dt_ms = 1000.0 / sr if sr > 0 else 0.0
+        time_ms = [x_min + i * dt_ms for i in range(n)]
+
         for ch in self._channels:
-            if ch.enabled:
-                waveform = self.instrument.get_waveform(ch.channel_id)
-                if waveform.num_points > 0:
-                    time_ms = (waveform.time * 1000).tolist()
-                    # Apply channel offset and scale for display
-                    # Scale is V/div - dividing by scale zooms in (smaller scale = more zoom)
-                    config = self.instrument.get_channel_config(ch.channel_id)
-                    scale = config.scale if config.scale > 0 else 1.0
-                    voltage_display = ((waveform.voltage * scale) + config.offset).tolist()
-                    dpg.set_value(ch.series_tag, [time_ms, voltage_display])
+            if (
+                ch.enabled
+                and ch.channel_id <= waveform.num_channels
+            ):
+                config = self.instrument.get_channel_config(
+                    ch.channel_id,
+                )
+                scale = (
+                    config.scale if config.scale > 0 else 1.0
+                )
+                voltage_display = (
+                    (
+                        waveform.voltage[ch.channel_id - 1]
+                        * scale
+                    )
+                    + config.offset
+                ).tolist()
+                dpg.set_value(
+                    ch.series_tag,
+                    [time_ms, voltage_display],
+                )
             else:
                 dpg.set_value(ch.series_tag, [[], []])
 
-    def _update_roll_mode(self) -> None:
-        """Roll mode: plot left-to-right, clear when reaching right edge.
-        
-        Uses get_waveform() and appends new data to create a rolling display.
-        """
-        x_min, x_max = dpg.get_axis_limits(self._x_axis_tag)
-        window_width_ms = x_max - x_min
-        current_time = time.time()
-        elapsed_ms = (current_time - self._roll_start_time) * 1000
-        current_x = x_min + elapsed_ms
-
-        # Check if we've reached the right edge - clear ALL channels
-        if current_x >= x_max:
-            for ch_id in self._roll_time:
-                self._roll_time[ch_id] = []
-                self._roll_voltage[ch_id] = []
-            self._roll_start_time = current_time
-            self._last_sample_time = 0.0
-            elapsed_ms = 0
-            current_x = x_min
-
-        # Update roll cursor position
-        if dpg.does_item_exist(self._roll_cursor_tag):
-            dpg.set_value(self._roll_cursor_tag, current_x)
-
-        # Get waveform data and use latest samples
-        for ch in self._channels:
-            ch_id = ch.channel_id
-            if not ch.enabled:
-                dpg.set_value(ch.series_tag, [[], []])
-                continue
-
-            waveform = self.instrument.get_waveform(ch_id)
-            if waveform.num_points == 0:
-                continue
-
-            # Calculate how much time has passed and how many samples to add
-            time_since_last_ms = elapsed_ms - self._last_sample_time
-            if time_since_last_ms <= 0:
-                continue
-
-            # Use the last portion of the waveform data
-            samples_per_ms = waveform.num_points / window_width_ms
-            num_new_samples = max(1, min(int(time_since_last_ms * samples_per_ms), waveform.num_points))
-            
-            # Get the latest samples from the waveform
-            voltage = waveform.voltage[-num_new_samples:]
-            
-            # Apply scale and offset
-            config = self.instrument.get_channel_config(ch_id)
-            scale = config.scale if config.scale > 0 else 1.0
-            voltage = (voltage * scale) + config.offset
-
-            # Generate display time points
-            display_times = np.linspace(
-                x_min + self._last_sample_time,
-                current_x,
-                num_new_samples
+        if (
+            self._display_mode == DisplayMode.ROLL
+            and dpg.does_item_exist(self._roll_cursor_tag)
+        ):
+            dpg.set_value(
+                self._roll_cursor_tag, time_ms[-1]
             )
-
-            self._roll_time[ch_id].extend(display_times.tolist())
-            self._roll_voltage[ch_id].extend(voltage.tolist())
-
-            dpg.set_value(ch.series_tag, [self._roll_time[ch_id], self._roll_voltage[ch_id]])
-
-        self._last_sample_time = elapsed_ms
-
-    def _update_screen_mode(self) -> None:
-        """Screen mode: continuous refresh showing latest waveform data.
-        
-        Simply displays the most recent waveform, similar to Normal mode
-        but updates continuously without waiting for full acquisition.
-        """
-        self._update_timebase_from_axis()
-
-        for ch in self._channels:
-            if ch.enabled:
-                waveform = self.instrument.get_waveform(ch.channel_id)
-                if waveform.num_points > 0:
-                    time_ms = (waveform.time * 1000).tolist()
-                    config = self.instrument.get_channel_config(ch.channel_id)
-                    scale = config.scale if config.scale > 0 else 1.0
-                    voltage_display = ((waveform.voltage * scale) + config.offset).tolist()
-                    dpg.set_value(ch.series_tag, [time_ms, voltage_display])
-            else:
-                dpg.set_value(ch.series_tag, [[], []])
 
 
 _panel: OscilloscopePanel | None = None

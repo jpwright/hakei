@@ -2,8 +2,6 @@
 
 from abc import abstractmethod
 from enum import Enum, auto
-from typing import Literal
-
 import numpy as np
 from numpy.typing import NDArray
 from pydantic import BaseModel
@@ -66,9 +64,8 @@ class ChannelConfig(BaseModel):
 class TimebaseConfig(BaseModel):
     """Configuration for the oscilloscope timebase."""
 
-    scale: float = 1e-3  # s/div
+    span: float = 10e-3  # total time span in seconds
     offset: float = 0.0  # s
-    reference: Literal["left", "center", "right"] = "center"
 
 
 class TriggerConfig(BaseModel):
@@ -79,18 +76,24 @@ class TriggerConfig(BaseModel):
     mode: TriggerMode = TriggerMode.AUTO
     edge: TriggerEdge = TriggerEdge.RISING
     level: float = 0.0  # V
+    position: float = 0.0  # seconds, time offset of trigger point from left edge
+    holdoff: float = 0.0  # seconds, minimum time before re-trigger
 
 
 class WaveformData(BaseModel):
-    """Waveform data from an oscilloscope channel."""
+    """Waveform data from an oscilloscope acquisition.
+
+    voltage is shape (num_channels, num_points) with voltage[channel_index]
+    for channel (channel_index + 1). The time axis is not included; the
+    caller derives it from sample_rate and num_points.
+    """
 
     model_config = {"arbitrary_types_allowed": True}
 
-    channel: int
-    time: NDArray[np.float64]
-    voltage: NDArray[np.float64]
+    voltage: NDArray[np.float64]  # shape (num_channels, num_points)
     sample_rate: float = 0.0
     num_points: int = 0
+    num_channels: int = 0
 
 
 class Oscilloscope(Instrument):
@@ -98,26 +101,19 @@ class Oscilloscope(Instrument):
 
     _panel_class_path = "hakei.ui.views.OscilloscopePanel"
     _config_class_path = "hakei.config.OscilloscopeConfig"
-    default_channels = 4
+    num_channels: int = 4
 
-    # Subclasses should override these constraints
-    MIN_SAMPLE_RATE: float = 1.0  # Hz
-    MAX_SAMPLE_RATE: float = 100e6  # Hz
-    MIN_BUFFER_SIZE: int = 100
-    MAX_BUFFER_SIZE: int = 100000
-    PREFERRED_BUFFER_SIZE: int = 10000
-
-    def __init__(self, resource_address: str, num_channels: int = 4, device=None):
+    def __init__(self, resource_address: str, device=None):
         super().__init__(resource_address, device=device)
-        self.num_channels = num_channels
         self._channel_configs: list[ChannelConfig] = [
-            ChannelConfig() for _ in range(num_channels)
+            ChannelConfig() for _ in range(self.num_channels)
         ]
         self._timebase = TimebaseConfig()
         self._trigger = TriggerConfig()
         self._acquisition_state = AcquisitionState.STOPPED
+        self._display_mode: DisplayMode = DisplayMode.NORMAL
         self._sample_rate: float = 1e6
-        self._buffer_size: int = self.PREFERRED_BUFFER_SIZE
+        self._buffer_size: int = 10000
 
     @property
     def acquisition_state(self) -> AcquisitionState:
@@ -139,6 +135,15 @@ class Oscilloscope(Instrument):
         return self._trigger
 
     @property
+    def display_mode(self) -> DisplayMode:
+        """Get the display mode (Normal, Roll, or Screen)."""
+        return self._display_mode
+
+    def set_display_mode(self, mode: DisplayMode) -> None:
+        """Set the display mode. Provided by the UI."""
+        self._display_mode = mode
+
+    @property
     def sample_rate(self) -> float:
         """Get the current sample rate in Hz."""
         return self._sample_rate
@@ -149,31 +154,13 @@ class Oscilloscope(Instrument):
         return self._buffer_size
 
     def set_timebase_length(self, length: float) -> None:
-        """Set the total timebase length and compute sample rate and buffer size.
+        """Set the total timebase span in seconds.
 
-        Args:
-            length: Total time window in seconds.
+        Updates ``_timebase.span`` then calls
+        ``_apply_timebase_settings`` so subclasses can adjust
+        ``_sample_rate``, ``_buffer_size``, or hardware registers.
         """
-        # Start with preferred buffer size and compute ideal sample rate
-        ideal_sample_rate = self.PREFERRED_BUFFER_SIZE / length
-
-        # Clamp sample rate to valid range
-        self._sample_rate = max(self.MIN_SAMPLE_RATE, min(ideal_sample_rate, self.MAX_SAMPLE_RATE))
-
-        # Compute buffer size from clamped sample rate
-        ideal_buffer_size = int(self._sample_rate * length)
-
-        # Clamp buffer size to valid range
-        self._buffer_size = max(self.MIN_BUFFER_SIZE, min(ideal_buffer_size, self.MAX_BUFFER_SIZE))
-
-        # If buffer size was clamped, recalculate sample rate to match
-        if ideal_buffer_size != self._buffer_size:
-            self._sample_rate = self._buffer_size / length
-
-        # Update timebase scale (10 divisions)
-        self._timebase.scale = length / 10
-
-        # Subclasses can override to apply hardware settings
+        self._timebase.span = length
         self._apply_timebase_settings()
 
     def _apply_timebase_settings(self) -> None:
@@ -229,12 +216,9 @@ class Oscilloscope(Instrument):
         """Set the input coupling for a channel."""
         ...
 
-    def set_timebase_scale(self, scale: float) -> None:
-        """Set the horizontal scale (s/div).
-        
-        Internally calls set_timebase_length with scale * 10 divisions.
-        """
-        self.set_timebase_length(scale * 10)
+    def set_timebase_span(self, span: float) -> None:
+        """Set the total horizontal time span (s)."""
+        self.set_timebase_length(span)
 
     def set_timebase_offset(self, offset: float) -> None:
         """Set the horizontal offset (s)."""
@@ -265,25 +249,33 @@ class Oscilloscope(Instrument):
         """Set the trigger level (V)."""
         ...
 
-    @abstractmethod
-    def get_waveform(self, channel: int) -> WaveformData:
-        """
-        Acquire waveform data from a channel.
+    def set_trigger_position(self, position: float) -> None:
+        """Set trigger position in seconds from the left edge of the screen."""
+        self._trigger.position = max(0.0, position)
 
-        Args:
-            channel: Channel number (1-indexed).
+    def set_trigger_holdoff(self, holdoff: float) -> None:
+        """Set trigger holdoff in seconds (minimum time before re-trigger)."""
+        self._trigger.holdoff = max(0.0, holdoff)
+
+    @abstractmethod
+    def get_waveform(self) -> WaveformData:
+        """
+        Acquire waveform data for all configured channels.
 
         Returns:
-            WaveformData containing time and voltage arrays.
+            WaveformData with voltage shape (num_channels, num_points).
+            Channel index i corresponds to channel number i + 1.
         """
         ...
 
     def measure_frequency(self, channel: int) -> float:
         """Measure the frequency on a channel using zero-crossing detection."""
-        waveform = self.get_waveform(channel)
-        if len(waveform.voltage) < 2 or waveform.sample_rate <= 0:
+        waveform = self.get_waveform()
+        ch_idx = channel - 1
+        if ch_idx >= waveform.num_channels or waveform.num_points < 2 or waveform.sample_rate <= 0:
             return 0.0
-        crossings = np.where(np.diff(np.sign(waveform.voltage - np.mean(waveform.voltage))))[0]
+        v = waveform.voltage[ch_idx]
+        crossings = np.where(np.diff(np.sign(v - np.mean(v))))[0]
         if len(crossings) < 2:
             return 0.0
         period = np.mean(np.diff(crossings)) * 2 / waveform.sample_rate
@@ -296,21 +288,26 @@ class Oscilloscope(Instrument):
 
     def measure_amplitude(self, channel: int) -> float:
         """Measure the peak-to-peak amplitude on a channel."""
-        waveform = self.get_waveform(channel)
-        if len(waveform.voltage) == 0:
+        waveform = self.get_waveform()
+        ch_idx = channel - 1
+        if ch_idx >= waveform.num_channels or waveform.num_points == 0:
             return 0.0
-        return float(np.max(waveform.voltage) - np.min(waveform.voltage))
+        v = waveform.voltage[ch_idx]
+        return float(np.max(v) - np.min(v))
 
     def measure_mean(self, channel: int) -> float:
         """Measure the mean voltage on a channel."""
-        waveform = self.get_waveform(channel)
-        if len(waveform.voltage) == 0:
+        waveform = self.get_waveform()
+        ch_idx = channel - 1
+        if ch_idx >= waveform.num_channels or waveform.num_points == 0:
             return 0.0
-        return float(np.mean(waveform.voltage))
+        return float(np.mean(waveform.voltage[ch_idx]))
 
     def measure_rms(self, channel: int) -> float:
         """Measure the RMS voltage on a channel."""
-        waveform = self.get_waveform(channel)
-        if len(waveform.voltage) == 0:
+        waveform = self.get_waveform()
+        ch_idx = channel - 1
+        if ch_idx >= waveform.num_channels or waveform.num_points == 0:
             return 0.0
-        return float(np.sqrt(np.mean(waveform.voltage ** 2)))
+        v = waveform.voltage[ch_idx]
+        return float(np.sqrt(np.mean(v ** 2)))
