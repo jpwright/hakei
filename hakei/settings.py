@@ -214,12 +214,20 @@ def _register_builtin_settings(
         tooltip="Color theme (requires restart)",
     ))
     mgr.define(Setting(
-        "acquisition.auto_connect",
-        "Auto-connect on startup",
+        "startup.load_session",
+        "Load previous session on startup",
         SettingKind.BOOL,
         True,
-        group="Instruments",
-        tooltip="Auto-connect previously-open instruments",
+        group="Startup",
+        tooltip="Restore instruments from last session",
+    ))
+    mgr.define(Setting(
+        "startup.auto_connect",
+        "Auto-connect devices on startup",
+        SettingKind.BOOL,
+        True,
+        group="Startup",
+        tooltip="Automatically connect to devices on launch",
     ))
     mgr.define(Setting(
         "acquisition.default_timebase",
@@ -291,8 +299,10 @@ def _add_widget(
 
     cur = mgr.get(s.key)
 
-    def _cb(sender, value, key=s.key):
-        mgr.set(key, value)
+    setting_key = s.key
+
+    def _cb(sender, value, _user_data=None):
+        mgr.set(setting_key, value)
         mgr.save()
 
     if s.kind == SettingKind.BOOL:

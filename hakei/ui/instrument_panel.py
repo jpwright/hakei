@@ -352,7 +352,9 @@ def close_instrument(address: str) -> None:
     save_default_config()
 
 
-def _apply_config(config: HakeiConfig) -> None:
+def _apply_config(
+    config: HakeiConfig, *, connect: bool = True,
+) -> None:
     """Apply a configuration, opening instruments as needed."""
     from hakei.config import PowerSupplyConfig, WaveformGeneratorConfig, apply_config_to_panel, apply_window_config
 
@@ -372,15 +374,16 @@ def _apply_config(config: HakeiConfig) -> None:
                             panel._sync_from_instrument()
                 break
 
-    _open_instruments_from_config(config)
-    
-    # Apply window layout config after all panels are created
+    _open_instruments_from_config(config, connect=connect)
+
     apply_window_config(config.window)
     manager = get_manager()
     manager.apply_layout(skip_dragging=False)
 
 
-def _open_instruments_from_config(config: HakeiConfig) -> None:
+def _open_instruments_from_config(
+    config: HakeiConfig, *, connect: bool = True,
+) -> None:
     """Open instruments specified in config that aren't already open."""
     from hakei.instruments.dummy import (
         DummyOscilloscope,
@@ -424,18 +427,18 @@ def _open_instruments_from_config(config: HakeiConfig) -> None:
                     from hakei.config import apply_config_to_panel
                     apply_config_to_panel(panel, inst_config)
                     
-                    # Connect in background
-                    def connect_thread(inst=instrument, cfg=inst_config, name=inst_class.__name__):
-                        inst.connect()
-                        apply_config_to_instrument(inst, cfg)
-                        log.info("Opened %s from config: %s", name, address)
-                    
-                    thread = threading.Thread(target=connect_thread, daemon=True)
-                    thread.start()
+                    if connect:
+                        def connect_thread(inst=instrument, cfg=inst_config, name=inst_class.__name__):
+                            inst.connect()
+                            apply_config_to_instrument(inst, cfg)
+                            log.info("Opened %s from config: %s", name, address)
+                        
+                        thread = threading.Thread(target=connect_thread, daemon=True)
+                        thread.start()
                     break
         else:
-            # For non-dummy instruments, scan and find matching instrument
-            _open_scanned_instrument_from_config(inst_config)
+            if connect:
+                _open_scanned_instrument_from_config(inst_config)
 
     manager = get_manager()
     manager.on_viewport_resize()
@@ -521,9 +524,16 @@ def _open_scanned_instrument_from_config(inst_config: Any) -> bool:
 
 def load_default_config() -> None:
     """Load the default configuration on startup."""
+    from hakei.settings import get_manager as get_settings
+    settings = get_settings()
+    if not settings.get("startup.load_session"):
+        return
     config = load_config()
     if config is not None:
-        _apply_config(config)
+        _apply_config(
+            config,
+            connect=settings.get("startup.auto_connect"),
+        )
 
 
 def setup_instrument_panel():
