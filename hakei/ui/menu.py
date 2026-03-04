@@ -76,6 +76,12 @@ def _on_load_file_selected(selected_files: list[str]):
         log.error("Failed to load configuration from %s", file_path)
 
 
+def _on_settings():
+    """Open the settings window."""
+    from hakei.settings import show_settings_window
+    show_settings_window()
+
+
 def _on_about():
     """Show the About dialog with version info."""
     ver = _get_version()
@@ -140,6 +146,8 @@ def setup_menu_bar():
             dpg.add_menu_item(label="Load Configuration...", callback=_on_load_config)
             dpg.add_separator()
             dpg.add_menu_item(label="Export Data")
+            dpg.add_separator()
+            dpg.add_menu_item(label="Settings...", callback=_on_settings)
             dpg.add_separator()
             dpg.add_menu_item(label="Exit", callback=_on_exit)
 
