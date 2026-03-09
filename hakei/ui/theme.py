@@ -10,6 +10,37 @@ import dearpygui.dearpygui as dpg
 log = logging.getLogger(__name__)
 
 
+def _create_disabled_theme():
+    with dpg.theme_component(dpg.mvAll, enabled_state=False):
+        # Text
+        dpg.add_theme_color(dpg.mvThemeCol_Text, (90, 90, 95))
+        dpg.add_theme_color(dpg.mvThemeCol_TextSelectedBg, (50, 55, 65))
+        # Frames (inputs, combos, text fields)
+        dpg.add_theme_color(dpg.mvThemeCol_FrameBg, (38, 38, 42))
+        dpg.add_theme_color(dpg.mvThemeCol_FrameBgHovered, (38, 38, 42))
+        dpg.add_theme_color(dpg.mvThemeCol_FrameBgActive, (38, 38, 42))
+        # Borders
+        dpg.add_theme_color(dpg.mvThemeCol_Border, (50, 50, 55))
+        dpg.add_theme_color(dpg.mvThemeCol_BorderShadow, (0, 0, 0, 0))
+        # Buttons (including combo dropdown arrow)
+        dpg.add_theme_color(dpg.mvThemeCol_Button, (38, 55, 80))
+        dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (38, 55, 80))
+        dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (38, 55, 80))
+        # Headers / selectables
+        dpg.add_theme_color(dpg.mvThemeCol_Header, (38, 55, 80))
+        dpg.add_theme_color(dpg.mvThemeCol_HeaderHovered, (38, 55, 80))
+        dpg.add_theme_color(dpg.mvThemeCol_HeaderActive, (38, 55, 80))
+        # Sliders / drag inputs
+        dpg.add_theme_color(dpg.mvThemeCol_SliderGrab, (55, 70, 90))
+        dpg.add_theme_color(dpg.mvThemeCol_SliderGrabActive, (55, 70, 90))
+        # Checkboxes / radio buttons
+        dpg.add_theme_color(dpg.mvThemeCol_CheckMark, (90, 90, 100))
+        # Scrollbars (text inputs with overflow)
+        dpg.add_theme_color(dpg.mvThemeCol_ScrollbarBg, (30, 30, 34))
+        dpg.add_theme_color(dpg.mvThemeCol_ScrollbarGrab, (50, 55, 60))
+        dpg.add_theme_color(dpg.mvThemeCol_ScrollbarGrabHovered, (50, 55, 60))
+        dpg.add_theme_color(dpg.mvThemeCol_ScrollbarGrabActive, (50, 55, 60))
+
 def setup_theme():
     """Create and apply the application theme."""
     with dpg.theme() as global_theme:
@@ -33,7 +64,30 @@ def setup_theme():
             dpg.add_theme_color(dpg.mvThemeCol_TabHovered, (60, 120, 190))
             dpg.add_theme_color(dpg.mvThemeCol_TabActive, (50, 100, 160))
 
+        _create_disabled_theme()
+
     dpg.bind_theme(global_theme)
+
+
+_disabled_theme: int | None = None
+
+
+def get_disabled_theme() -> int:
+    """Return a bindable theme for explicitly disabled items.
+
+    Use when DearPyGui's enabled_state=False global selector doesn't fire
+    for a specific widget type (e.g. mvInputFloat).  Bind this theme to the
+    item when disabling it and pass 0 to dpg.bind_item_theme() to restore
+    the global theme when re-enabling.
+    """
+    global _disabled_theme
+    if _disabled_theme is not None:
+        return _disabled_theme
+
+    with dpg.theme() as _disabled_theme:
+        _create_disabled_theme()
+
+    return _disabled_theme
 
 
 def get_dpi_scale() -> float:

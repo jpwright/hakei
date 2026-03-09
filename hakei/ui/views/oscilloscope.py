@@ -14,6 +14,7 @@ from hakei.instruments.oscilloscope import (
     TriggerMode,
 )
 from hakei.ui.layout import get_manager
+from hakei.ui.theme import get_disabled_theme
 from hakei.ui.views.base import InstrumentPanel
 
 log = logging.getLogger(__name__)
@@ -113,7 +114,7 @@ class OscilloscopeChannel:
         # Show/hide drag line
         if dpg.does_item_exist(self.drag_line_tag):
             dpg.configure_item(self.drag_line_tag, show=value)
-        # Update display if panel y-axis is in STACKED mode
+        # Update y-axis limits
         if self.panel._display_mode_y == DisplayModeY.STACKED:
             self.panel._fit_y_axis_stacked()
 
@@ -478,20 +479,36 @@ class OscilloscopePanel(InstrumentPanel):
                     self._roll_cursor_tag, show=(self._display_mode_x == DisplayModeX.ROLL)
                 )
 
+    def _refresh_y_axis(self):
+        overlay = self._display_mode_y == DisplayModeY.OVERLAY
+        for ch in self._channels:
+            if dpg.does_item_exist(ch.drag_line_tag):
+                dpg.configure_item(ch.drag_line_tag, show=ch.enabled and overlay)
+
+        if self._display_mode_y == DisplayModeY.OVERLAY:
+            # Set y-axis limits
+            self._fit_y_axis_overlay()
+            # Enable offset control in panel
+            for ch in self._channels:
+                if dpg.does_item_exist(ch.offset_tag):
+                    dpg.enable_item(ch.offset_tag)
+                    dpg.bind_item_theme(ch.offset_tag, 0)
+        if self._display_mode_y == DisplayModeY.STACKED:
+            # Set y-axis limits
+            self._fit_y_axis_stacked()
+            # Disable offset control in panel
+            for ch in self._channels:
+                if dpg.does_item_exist(ch.offset_tag):
+                    dpg.disable_item(ch.offset_tag)
+                    dpg.bind_item_theme(ch.offset_tag, get_disabled_theme())
+
     def _on_display_mode_y_change(self, sender: str, value: str) -> None:
         """Handle Y-axis mode change between Overlay and Stacked."""
         if value in DISPLAY_MODE_Y_MAP:
             self._display_mode_y = DISPLAY_MODE_Y_MAP[value]
             if self.instrument:
                 self.instrument.set_display_mode_y(self._display_mode_y)
-            overlay = self._display_mode_y == DisplayModeY.OVERLAY
-            for ch in self._channels:
-                if dpg.does_item_exist(ch.drag_line_tag):
-                    dpg.configure_item(ch.drag_line_tag, show=ch.enabled and overlay)
-
-            if self._display_mode_y == DisplayModeY.STACKED:
-                # Set y-axis limits
-                self._fit_y_axis_stacked()
+            self._refresh_y_axis()
 
     def _build_ui(self) -> None:
         # Control bar
@@ -728,6 +745,9 @@ class OscilloscopePanel(InstrumentPanel):
             dpg.set_value(self._display_mode_x_tag, self._display_mode_x.name.capitalize())
         if dpg.does_item_exist(self._display_mode_y_tag):
             dpg.set_value(self._display_mode_y_tag, self._display_mode_y.name.capitalize())
+
+        self._refresh_y_axis()
+        
         if dpg.does_item_exist(self._roll_cursor_tag):
             dpg.configure_item(
                 self._roll_cursor_tag,
@@ -783,6 +803,8 @@ class OscilloscopePanel(InstrumentPanel):
         x_max: float,
         y_min: float,
         y_max: float,
+        fix_x: bool = False,
+        fix_y: bool = False,
     ) -> None:
         """Set axis limits from config.
 
@@ -825,6 +847,20 @@ class OscilloscopePanel(InstrumentPanel):
         self._last_x_min = x_min
         self._last_x_max = x_max
 
+        # Fix limits if requested
+        if fix_x:
+            dpg.set_axis_limits(self._x_axis_tag, x_min, x_max)
+        if fix_y:
+            dpg.set_axis_limits(self._y_axis_tag, y_min, y_max)
+
+    def _fit_y_axis_overlay(self) -> None:
+        """Set y-axis limits assuming OVERLAY mode."""
+
+        # Retain current limits but un-fix.
+        x_min, x_max = dpg.get_axis_limits(self._x_axis_tag)
+        y_min, y_max = dpg.get_axis_limits(self._y_axis_tag)
+        self.set_axis_limits(x_min, x_max, y_min, y_max)
+
     def _fit_y_axis_stacked(self) -> None:
         """Set y-axis limits assuming STACKED mode."""
         enabled_chs = [
@@ -833,7 +869,7 @@ class OscilloscopePanel(InstrumentPanel):
         ]
         n = len(enabled_chs)
         x_min, x_max = dpg.get_axis_limits(self._x_axis_tag)
-        self.set_axis_limits(x_min, x_max, n / 2.0, -1.0 * n / 2.0)
+        self.set_axis_limits(x_min, x_max, n / 2.0, -1.0 * n / 2.0, fix_y=True)
 
 
     def _check_axis_changes(self) -> None:
