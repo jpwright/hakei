@@ -42,12 +42,19 @@ class AcquisitionState(Enum):
     COMPLETE = auto()
 
 
-class DisplayMode(Enum):
-    """Oscilloscope display modes."""
+class DisplayModeX(Enum):
+    """Oscilloscope x-axis display modes."""
 
     NORMAL = auto()   # Wait for full screen, then refresh
     ROLL = auto()     # Plot left-to-right, clear when reaching right edge
     SCREEN = auto()   # Continuous refresh, pushing old data off left edge
+
+
+class DisplayModeY(Enum):
+    """Oscilloscope y-axis display modes."""
+
+    OVERLAY = auto()  # All channels on top of eachother; adjustable offset
+    STACKED = auto()  # Channels automatically separated by 1V
 
 
 class ChannelConfig(BaseModel):
@@ -111,7 +118,7 @@ class Oscilloscope(Instrument):
         self._timebase = TimebaseConfig()
         self._trigger = TriggerConfig()
         self._acquisition_state = AcquisitionState.STOPPED
-        self._display_mode: DisplayMode = DisplayMode.NORMAL
+        self._display_mode_x: DisplayModeX = DisplayModeX.NORMAL
         self._sample_rate: float = 1e6
         self._buffer_size: int = 10000
 
@@ -135,13 +142,13 @@ class Oscilloscope(Instrument):
         return self._trigger
 
     @property
-    def display_mode(self) -> DisplayMode:
+    def display_mode_x(self) -> DisplayModeX:
         """Get the display mode (Normal, Roll, or Screen)."""
-        return self._display_mode
+        return self._display_mode_x
 
-    def set_display_mode(self, mode: DisplayMode) -> None:
+    def set_display_mode_x(self, mode: DisplayModeX) -> None:
         """Set the display mode. Provided by the UI."""
-        self._display_mode = mode
+        self._display_mode_x = mode
 
     @property
     def sample_rate(self) -> float:

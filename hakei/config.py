@@ -52,7 +52,8 @@ class OscilloscopeConfig(BaseModel):
     trigger_level: float = 0.0
     trigger_position: float = 0.0
     trigger_holdoff: float = 0.0
-    display_mode: str = "NORMAL"
+    display_mode_x: str = "NORMAL"
+    display_mode_y: str = "OVERLAY"
     # Axis limits (UI state)
     x_axis_min: float = -10.0
     x_axis_max: float = 10.0
@@ -251,7 +252,7 @@ def build_config_from_instruments(
             osc_config.trigger_level = instrument.trigger.level
             osc_config.trigger_position = instrument.trigger.position
             osc_config.trigger_holdoff = instrument.trigger.holdoff
-            osc_config.display_mode = instrument.display_mode.name
+            osc_config.display_mode_x = instrument.display_mode_x.name
             # Get axis limits from panel if available
             panel = panels.get(address)
             if panel and hasattr(panel, 'get_axis_limits'):
@@ -331,9 +332,9 @@ def apply_config_to_instrument(instrument: Any, config: InstrumentConfig) -> Non
         instrument.set_trigger_holdoff(config.trigger_holdoff)
         instrument.set_trigger_enabled(config.trigger_enabled)
 
-        from hakei.instruments.oscilloscope import DisplayMode
+        from hakei.instruments.oscilloscope import DisplayModeX, DisplayModeY
         try:
-            instrument.set_display_mode(DisplayMode[config.display_mode])
+            instrument.set_display_mode_x(DisplayModeX[config.display_mode_x])
         except KeyError:
             pass
 

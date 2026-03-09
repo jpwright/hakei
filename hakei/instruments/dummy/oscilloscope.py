@@ -11,7 +11,7 @@ from hakei.instruments.base import ConnectionState, InstrumentInfo
 from hakei.instruments.oscilloscope import (
     AcquisitionState,
     Coupling,
-    DisplayMode,
+    DisplayModeX,
     Oscilloscope,
     TriggerEdge,
     TriggerMode,
@@ -278,13 +278,13 @@ class DummyOscilloscope(Oscilloscope):
         if N == 0:
             return empty
 
-        mode = self._display_mode
+        mode = self._display_mode_x
 
-        if mode == DisplayMode.NORMAL:
+        if mode == DisplayModeX.NORMAL:
             return self._get_waveform_normal(
                 N, ch_lists, screen_samples, empty,
             )
-        if mode == DisplayMode.ROLL:
+        if mode == DisplayModeX.ROLL:
             return self._get_waveform_roll(
                 N, ch_lists, screen_samples, empty,
             )

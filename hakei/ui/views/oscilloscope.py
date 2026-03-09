@@ -7,7 +7,8 @@ import dearpygui.dearpygui as dpg
 from hakei.instruments.oscilloscope import (
     AcquisitionState,
     Coupling,
-    DisplayMode,
+    DisplayModeX,
+    DisplayModeY,
     Oscilloscope,
     TriggerEdge,
     TriggerMode,
@@ -35,10 +36,15 @@ TRIGGER_EDGE_MAP = {
     "Either": TriggerEdge.EITHER,
 }
 
-DISPLAY_MODE_MAP = {
-    "Normal": DisplayMode.NORMAL,
-    "Roll": DisplayMode.ROLL,
-    "Screen": DisplayMode.SCREEN,
+DISPLAY_MODE_X_MAP = {
+    "Normal": DisplayModeX.NORMAL,
+    "Roll": DisplayModeX.ROLL,
+    "Screen": DisplayModeX.SCREEN,
+}
+
+DISPLAY_MODE_Y_MAP = {
+    "Overlay": DisplayModeY.OVERLAY,
+    "Stacked": DisplayModeY.STACKED,
 }
 
 # ImPlot "Deep" colormap colors (default)
@@ -107,6 +113,9 @@ class OscilloscopeChannel:
         # Show/hide drag line
         if dpg.does_item_exist(self.drag_line_tag):
             dpg.configure_item(self.drag_line_tag, show=value)
+        # Update display if panel y-axis is in STACKED mode
+        if self.panel._display_mode_y == DisplayModeY.STACKED:
+            self.panel._fit_y_axis_stacked()
 
     def _on_coupling(self, sender: str, value: str) -> None:
         """Handle coupling change."""
@@ -245,7 +254,8 @@ class OscilloscopePanel(InstrumentPanel):
         self._update_registered = False
         self._last_x_min = -50.0
         self._last_x_max = 50.0
-        self._display_mode = DisplayMode.NORMAL
+        self._display_mode_x = DisplayModeX.NORMAL
+        self._display_mode_y = DisplayModeY.OVERLAY
 
         # Initialize channels
         for i in range(nch):
@@ -279,8 +289,12 @@ class OscilloscopePanel(InstrumentPanel):
         return f"{self.tag}_status"
 
     @property
-    def _display_mode_tag(self) -> str:
-        return f"{self.tag}_display_mode"
+    def _display_mode_x_tag(self) -> str:
+        return f"{self.tag}_display_mode_x"
+
+    @property
+    def _display_mode_y_tag(self) -> str:
+        return f"{self.tag}_display_mode_y"
 
     @property
     def _trigger_enable_tag(self) -> str:
@@ -453,16 +467,29 @@ class OscilloscopePanel(InstrumentPanel):
         if self.instrument and hasattr(self.instrument, 'set_trigger_edge') and value in TRIGGER_EDGE_MAP:
             self.instrument.set_trigger_edge(TRIGGER_EDGE_MAP[value])
 
-    def _on_display_mode_change(self, sender: str, value: str) -> None:
+    def _on_display_mode_x_change(self, sender: str, value: str) -> None:
         """Handle display mode change."""
-        if value in DISPLAY_MODE_MAP:
-            self._display_mode = DISPLAY_MODE_MAP[value]
+        if value in DISPLAY_MODE_X_MAP:
+            self._display_mode_x = DISPLAY_MODE_X_MAP[value]
             if self.instrument:
-                self.instrument.set_display_mode(self._display_mode)
+                self.instrument.set_display_mode_x(self._display_mode_x)
             if dpg.does_item_exist(self._roll_cursor_tag):
                 dpg.configure_item(
-                    self._roll_cursor_tag, show=(self._display_mode == DisplayMode.ROLL)
+                    self._roll_cursor_tag, show=(self._display_mode_x == DisplayModeX.ROLL)
                 )
+
+    def _on_display_mode_y_change(self, sender: str, value: str) -> None:
+        """Handle Y-axis mode change between Overlay and Stacked."""
+        if value in DISPLAY_MODE_Y_MAP:
+            self._display_mode_y = DISPLAY_MODE_Y_MAP[value]
+            overlay = self._display_mode_y == DisplayModeY.OVERLAY
+            for ch in self._channels:
+                if dpg.does_item_exist(ch.drag_line_tag):
+                    dpg.configure_item(ch.drag_line_tag, show=ch.enabled and overlay)
+            
+            if self._display_mode_y == DisplayModeY.STACKED:
+                # Set y-axis limits
+                self._fit_y_axis_stacked()
 
     def _build_ui(self) -> None:
         # Control bar
@@ -478,13 +505,22 @@ class OscilloscopePanel(InstrumentPanel):
             dpg.add_spacer(width=20)
             dpg.add_text("Status: Stopped", tag=self._status_tag)
             dpg.add_spacer(width=20)
-            dpg.add_text("Display:")
+            dpg.add_text("X-Axis:")
             dpg.add_combo(
-                items=list(DISPLAY_MODE_MAP.keys()),
+                items=list(DISPLAY_MODE_X_MAP.keys()),
                 default_value="Normal",
                 width=100,
-                tag=self._display_mode_tag,
-                callback=self._on_display_mode_change,
+                tag=self._display_mode_x_tag,
+                callback=self._on_display_mode_x_change,
+            )
+            dpg.add_spacer(width=10)
+            dpg.add_text("Y-Axis:")
+            dpg.add_combo(
+                items=list(DISPLAY_MODE_Y_MAP.keys()),
+                default_value="Overlay",
+                width=100,
+                tag=self._display_mode_y_tag,
+                callback=self._on_display_mode_y_change,
             )
 
         dpg.add_separator()
@@ -684,15 +720,15 @@ class OscilloscopePanel(InstrumentPanel):
             return
 
         # Sync display mode
-        mode = self.instrument.display_mode
-        self._display_mode = mode
+        mode = self.instrument.display_mode_x
+        self._display_mode_x = mode
         mode_label = mode.name.capitalize()
-        if dpg.does_item_exist(self._display_mode_tag):
-            dpg.set_value(self._display_mode_tag, mode_label)
+        if dpg.does_item_exist(self._display_mode_x_tag):
+            dpg.set_value(self._display_mode_x_tag, mode_label)
         if dpg.does_item_exist(self._roll_cursor_tag):
             dpg.configure_item(
                 self._roll_cursor_tag,
-                show=(mode == DisplayMode.ROLL),
+                show=(mode == DisplayModeX.ROLL),
             )
 
         # Sync trigger settings
@@ -786,6 +822,17 @@ class OscilloscopePanel(InstrumentPanel):
         self._last_x_min = x_min
         self._last_x_max = x_max
 
+    def _fit_y_axis_stacked(self) -> None:
+        """Set y-axis limits assuming STACKED mode."""
+        enabled_chs = [
+            c for c in self._channels
+            if c.enabled
+        ]
+        n = len(enabled_chs)
+        x_min, x_max = dpg.get_axis_limits(self._x_axis_tag)
+        self.set_axis_limits(x_min, x_max, n / 2.0, -1.0 * n/ 2.0)
+
+
     def _check_axis_changes(self) -> None:
         """Check for axis changes and update instrument."""
         if not self._setup_complete or not self.instrument:
@@ -844,6 +891,20 @@ class OscilloscopePanel(InstrumentPanel):
         dt_ms = 1000.0 / sr if sr > 0 else 0.0
         time_ms = [x_min + i * dt_ms for i in range(n)]
 
+        # Compute stacked offsets if in Stacked mode
+        if self._display_mode_y == DisplayModeY.STACKED:
+            enabled_chs = [
+                c for c in self._channels
+                if c.enabled and c.channel_id <= waveform.num_channels
+            ]
+            n = len(enabled_chs)
+            stacked_offsets = {
+                c.channel_id: ((n - i - 1) - (n - 1) / 2.0)
+                for i, c in enumerate(enabled_chs)
+            }
+        else:
+            stacked_offsets = None
+
         for ch in self._channels:
             if (
                 ch.enabled
@@ -855,12 +916,14 @@ class OscilloscopePanel(InstrumentPanel):
                 scale = (
                     config.scale if config.scale > 0 else 1.0
                 )
+                display_offset = (
+                    stacked_offsets[ch.channel_id]
+                    if stacked_offsets is not None
+                    else config.offset
+                )
                 voltage_display = (
-                    (
-                        waveform.voltage[ch.channel_id - 1]
-                        * scale
-                    )
-                    + config.offset
+                    waveform.voltage[ch.channel_id - 1] * scale
+                    + display_offset
                 ).tolist()
                 dpg.set_value(
                     ch.series_tag,
@@ -870,7 +933,7 @@ class OscilloscopePanel(InstrumentPanel):
                 dpg.set_value(ch.series_tag, [[], []])
 
         if (
-            self._display_mode == DisplayMode.ROLL
+            self._display_mode_x == DisplayModeX.ROLL
             and dpg.does_item_exist(self._roll_cursor_tag)
         ):
             dpg.set_value(

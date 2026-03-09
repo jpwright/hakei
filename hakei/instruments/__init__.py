@@ -18,7 +18,8 @@ from hakei.instruments.dummy import (
 from hakei.instruments.oscilloscope import (
     AcquisitionState,
     Coupling,
-    DisplayMode,
+    DisplayModeX,
+    DisplayModeY,
     Oscilloscope,
     TimebaseConfig,
     TriggerConfig,
@@ -92,7 +93,8 @@ __all__ = [
     # Oscilloscope
     "AcquisitionState",
     "Coupling",
-    "DisplayMode",
+    "DisplayModeX",
+    "DisplayModeY",
     "Oscilloscope",
     "OscilloscopeChannelConfig",
     "TimebaseConfig",
