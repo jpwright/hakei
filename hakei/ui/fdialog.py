@@ -1,6 +1,7 @@
 # file_dialog 3.1
 # MIT lincensed
 
+import concurrent.futures
 import os
 import platform
 import time
@@ -792,12 +793,6 @@ class FileDialog:
                 if (self.user_style == 0):
                     with dpg.child_window(tag=self.tag+"shortcut_menu", width=200, resizable_x=True, show=self.show_shortcuts_menu, height=-info_px):
                         home = self.get_directory_path("Home")
-                        desktop = self.get_directory_path("Desktop")
-                        downloads = self.get_directory_path("Downloads")
-                        images = self.get_directory_path("Pictures")
-                        documents = self.get_directory_path("Documents")
-                        musics = self.get_directory_path("Music")
-                        videos = self.get_directory_path("Videos")
 
                         def _add_shortcut(icon, path, label):
                             if path is not None or os.path.exists(path):
@@ -810,12 +805,6 @@ class FileDialog:
                                     )
 
                         _add_shortcut(self.img_home, home, "Home")
-                        _add_shortcut(self.img_desktop, desktop, "Desktop")
-                        _add_shortcut(self.img_downloads, downloads, "Downloads")
-                        _add_shortcut(self.img_picture_folder, images, "Images")
-                        _add_shortcut(self.img_document_folder, documents, "Documents")
-                        _add_shortcut(self.img_music_folder, musics, "Musics")
-                        _add_shortcut(self.img_videos, videos, "Videos")
 
                         dpg.add_separator()
 
