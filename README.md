@@ -48,17 +48,6 @@ uv run quartodoc build
 quarto preview docs
 ```
 
-## Concepts
-
-### Devices vs Instruments
-
-hakei distinguishes between **Devices** and **Instruments**:
-
-- **Device**: A physical piece of hardware (e.g., Digilent Analog Discovery 2, a multi-function bench instrument). A device has a single connection interface and may contain multiple instruments.
-- **Instrument**: A logical function within a device (e.g., oscilloscope, waveform generator, power supply). Some devices contain only one instrument (standalone instruments), while others contain multiple.
-
-When you connect to a multi-function device, you can choose which instruments to activate at any time.
-
 ## Project Structure
 
 ```

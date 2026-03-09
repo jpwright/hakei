@@ -1,15 +1,8 @@
 ---
-title: "Hakei"
+title: "hakei"
 ---
 
-Hakei is a Python application for visualization and control of electronic bench equipment including oscilloscopes, power supplies, and waveform generators.
-
-## Features
-
-- **Instrument Panels**: Dedicated views for oscilloscopes, power supplies, and waveform generators
-- **Tiling Layout**: Drag-and-drop window management with automatic stacking
-- **Device Connection**: Support for VISA, Serial, USB, and Ethernet interfaces
-- **DPI-Aware UI**: Automatic font scaling for high-DPI displays
+hakei is a Python application for visualization and control of electronic bench equipment including oscilloscopes, power supplies, and waveform generators.
 
 ## Installation
 

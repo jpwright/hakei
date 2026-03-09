@@ -6,6 +6,7 @@ from typing import Any
 
 import dearpygui.dearpygui as dpg
 
+from hakei.ui.theme import get_disabled_theme
 from hakei.instruments.base import ConnectionState, Instrument
 from hakei.ui.layout import get_manager
 
@@ -72,7 +73,6 @@ class InstrumentPanel(ABC):
             label=self.label,
             tag=self.window_tag,
             no_close=True,
-            no_collapse=True,
         ):
             # Header with close button and connection status
             with dpg.group(horizontal=True):
@@ -198,6 +198,8 @@ class InstrumentPanel(ABC):
                         ]
                         if item_type in interactive_types:
                             dpg.configure_item(child, enabled=enabled)
+                            dpg.bind_item_theme(child, get_disabled_theme() if not enabled else 0)
+
                     except Exception:
                         pass
 

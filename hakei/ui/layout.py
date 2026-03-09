@@ -32,6 +32,7 @@ class TiledWindow:
     visible: bool = True
     last_pos: list[int] = field(default_factory=lambda: [0, 0])
     last_height: int = 0
+    last_collapsed: bool = False
     is_dragging: bool = False
     drag_settled_frames: int = 0
     expected_pos: list[int] = field(default_factory=lambda: [0, 0])
@@ -180,6 +181,9 @@ class TilingManager:
                 current_height = dpg.get_item_height(window.tag)
                 height_changed = abs(current_height - window.last_height) > 5
                 top_moved = abs(current_pos[1] - window.expected_pos[1]) > 5
+
+                current_collapsed = dpg.is_item_shown(window.tag)
+                log.info(f"{window.tag} current_collapsed: {current_collapsed}")
 
                 if height_changed:
                     if top_moved:

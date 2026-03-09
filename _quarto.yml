@@ -5,7 +5,7 @@ project:
   output-dir: docs/_site
 
 website:
-  title: "Hakei"
+  title: "hakei"
   description: "Electronic bench equipment visualization and control"
   navbar:
     left:
