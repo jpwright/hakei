@@ -9,9 +9,9 @@ import logging
 import time
 
 import click
-from click_loglevel import LogLevel
 import coloredlogs
 import dearpygui.dearpygui as dpg
+from click_loglevel import LogLevel
 
 from hakei.config import get_initial_viewport_size
 from hakei.ui.instrument_panel import (

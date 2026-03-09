@@ -2,6 +2,7 @@
 
 from abc import abstractmethod
 from enum import Enum, auto
+
 import numpy as np
 from numpy.typing import NDArray
 from pydantic import BaseModel
@@ -119,6 +120,7 @@ class Oscilloscope(Instrument):
         self._trigger = TriggerConfig()
         self._acquisition_state = AcquisitionState.STOPPED
         self._display_mode_x: DisplayModeX = DisplayModeX.NORMAL
+        self._display_mode_y: DisplayModeY = DisplayModeY.OVERLAY
         self._sample_rate: float = 1e6
         self._buffer_size: int = 10000
 
@@ -143,12 +145,21 @@ class Oscilloscope(Instrument):
 
     @property
     def display_mode_x(self) -> DisplayModeX:
-        """Get the display mode (Normal, Roll, or Screen)."""
+        """Get the x-axis display mode (Normal, Roll, or Screen)."""
         return self._display_mode_x
 
     def set_display_mode_x(self, mode: DisplayModeX) -> None:
-        """Set the display mode. Provided by the UI."""
+        """Set the x-axis display mode. Provided by the UI."""
         self._display_mode_x = mode
+
+    @property
+    def display_mode_y(self) -> DisplayModeY:
+        """Get the y-axis display mode (Overlay or Stacked)."""
+        return self._display_mode_y
+
+    def set_display_mode_y(self, mode: DisplayModeY) -> None:
+        """Set the y-axis display mode. Provided by the UI."""
+        self._display_mode_y = mode
 
     @property
     def sample_rate(self) -> float:
@@ -206,14 +217,14 @@ class Oscilloscope(Instrument):
 
     def set_channel_scale(self, channel: int, scale: float) -> None:
         """Set the vertical scale for a channel.
-        
+
         This is a display-only scale applied in the UI.
         """
         self._channel_configs[channel - 1].scale = scale
 
     def set_channel_offset(self, channel: int, offset: float) -> None:
         """Set the vertical offset for a channel.
-        
+
         This is a display-only offset applied in the UI.
         """
         self._channel_configs[channel - 1].offset = offset

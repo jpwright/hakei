@@ -328,7 +328,12 @@ def _apply_config(
     config: HakeiConfig, *, connect: bool = True,
 ) -> None:
     """Apply a configuration, opening instruments as needed."""
-    from hakei.config import PowerSupplyConfig, WaveformGeneratorConfig, apply_config_to_panel, apply_window_config
+    from hakei.config import (
+        PowerSupplyConfig,
+        WaveformGeneratorConfig,
+        apply_config_to_panel,
+        apply_window_config,
+    )
 
     for address, instrument in _open_instruments.items():
         for inst_config in config.instruments:
@@ -373,7 +378,7 @@ def _open_instruments_from_config(
             continue
 
         address = inst_config.resource_address
-        
+
         # Handle dummy instruments directly
         if address.startswith("DUMMY"):
             for inst_class in dummy_classes:
@@ -394,17 +399,17 @@ def _open_instruments_from_config(
                     panel = panel_class(instrument=instrument, **panel_kwargs)
                     panel.setup()
                     _open_panels[address] = panel
-                    
+
                     # Apply panel-specific config (axis limits, etc.)
                     from hakei.config import apply_config_to_panel
                     apply_config_to_panel(panel, inst_config)
-                    
+
                     if connect:
-                        def connect_thread(inst=instrument, cfg=inst_config, name=inst_class.__name__):
+                        def connect_thread(inst=instrument, cfg=inst_config, name=inst_class.__name__, addr=address):
                             inst.connect()
                             apply_config_to_instrument(inst, cfg)
-                            log.info("Opened %s from config: %s", name, address)
-                        
+                            log.info("Opened %s from config: %s", name, addr)
+
                         thread = threading.Thread(target=connect_thread, daemon=True)
                         thread.start()
                     break
@@ -418,15 +423,12 @@ def _open_instruments_from_config(
 
 def _open_scanned_instrument_from_config(inst_config: Any) -> bool:
     """Try to open a non-dummy instrument by scanning for it."""
-    from hakei.instruments.oscilloscope import Oscilloscope
-    from hakei.instruments.power_supply import PowerSupply
-    from hakei.instruments.waveform_generator import WaveformGenerator
 
     address = inst_config.resource_address
-    
+
     # Scan all interface types to find matching instrument
     scanner = get_scanner()
-    
+
     # Try Digilent first, then other interfaces
     for interface_type in [InterfaceType.DIGILENT, InterfaceType.VISA, InterfaceType.USB]:
         try:
@@ -434,18 +436,18 @@ def _open_scanned_instrument_from_config(inst_config: Any) -> bool:
         except Exception as e:
             log.debug("Failed to scan %s: %s", interface_type, e)
             continue
-        
+
         for discovered in discovered_list:
             if discovered.resource_address != address:
                 continue
-            
+
             # Found matching instrument
             log.info("Found instrument from config: %s", address)
-            
+
             if discovered.instrument_class is None or discovered.panel_class is None:
                 log.warning("No driver for instrument: %s", address)
                 return False
-            
+
             # Open the instrument
             if discovered.device_address:
                 # Device-based instrument
@@ -453,7 +455,7 @@ def _open_scanned_instrument_from_config(inst_config: Any) -> bool:
                     if discovered.device_class is None:
                         log.warning("No device driver for: %s", discovered.device_address)
                         return False
-                    
+
                     device = discovered.device_class(
                         discovered.device_address, **discovered.device_kwargs
                     )
@@ -461,7 +463,7 @@ def _open_scanned_instrument_from_config(inst_config: Any) -> bool:
                         log.error("Failed to connect to device: %s", discovered.device_address)
                         return False
                     _open_devices[discovered.device_address] = device
-                
+
                 device = _open_devices[discovered.device_address]
                 instrument = device.activate_instrument(discovered.instrument_id)
                 if instrument is None:
@@ -473,23 +475,23 @@ def _open_scanned_instrument_from_config(inst_config: Any) -> bool:
                     address, **discovered.instrument_kwargs
                 )
                 instrument.connect()
-            
+
             _open_instruments[address] = instrument
             apply_config_to_instrument(instrument, inst_config)
-            
+
             # Create panel
             panel_kwargs = dict(discovered.panel_kwargs)
             panel = discovered.panel_class(instrument=instrument, **panel_kwargs)
             panel.setup()
             _open_panels[address] = panel
-            
+
             # Apply panel-specific config (axis limits, etc.)
             from hakei.config import apply_config_to_panel
             apply_config_to_panel(panel, inst_config)
-            
+
             log.info("Opened %s from config: %s", type(instrument).__name__, address)
             return True
-    
+
     log.warning("Could not find instrument from config: %s", address)
     return False
 

@@ -1,7 +1,6 @@
 # file_dialog 3.1
 # MIT lincensed
 
-import concurrent.futures
 import os
 import platform
 import time
@@ -499,7 +498,7 @@ class FileDialog:
         height=650,
         min_size=(460, 320),
         dirs_only=False,
-        default_path=os.getcwd(),
+        default_path=None,
         filter_list=None,
         file_filter=".*",
         callback=None,
@@ -514,6 +513,8 @@ class FileDialog:
         default_filename=None,
     ):
         #global self.chdir
+        if default_path is None:
+            default_path = os.getcwd()
 
         # args
         if filter_list is None:

@@ -100,7 +100,7 @@ def _on_about():
             dpg.add_table_column()
             dpg.add_table_column()
             with dpg.table_row():
-                dpg.add_spacer()    
+                dpg.add_spacer()
                 dpg.add_button(label="OK", callback=lambda: dpg.delete_item("about_window"))
                 dpg.add_spacer()
 

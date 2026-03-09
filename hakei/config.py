@@ -176,6 +176,7 @@ def get_default_config() -> HakeiConfig:
 def build_window_config() -> WindowConfig:
     """Build window configuration from current layout state."""
     import dearpygui.dearpygui as dpg
+
     from hakei.ui.layout import get_manager
 
     manager = get_manager()
@@ -253,6 +254,7 @@ def build_config_from_instruments(
             osc_config.trigger_position = instrument.trigger.position
             osc_config.trigger_holdoff = instrument.trigger.holdoff
             osc_config.display_mode_x = instrument.display_mode_x.name
+            osc_config.display_mode_y = instrument.display_mode_y.name
             # Get axis limits from panel if available
             panel = panels.get(address)
             if panel and hasattr(panel, 'get_axis_limits'):
@@ -337,6 +339,10 @@ def apply_config_to_instrument(instrument: Any, config: InstrumentConfig) -> Non
             instrument.set_display_mode_x(DisplayModeX[config.display_mode_x])
         except KeyError:
             pass
+        try:
+            instrument.set_display_mode_y(DisplayModeY[config.display_mode_y])
+        except KeyError:
+            pass
 
     elif isinstance(instrument, WaveformGenerator) and isinstance(
         config, WaveformGeneratorConfig
@@ -366,12 +372,13 @@ def get_initial_viewport_size() -> tuple[int, int]:
 def apply_window_config(config: WindowConfig) -> None:
     """Apply window configuration to restore layout state."""
     import dearpygui.dearpygui as dpg
+
     from hakei.ui.layout import get_manager
 
     manager = get_manager()
     manager._sidebar_width = config.sidebar_width
     manager._last_sidebar_width = config.sidebar_width
-    
+
     try:
         dpg.set_item_width("instrument_panel", config.sidebar_width)
     except Exception:

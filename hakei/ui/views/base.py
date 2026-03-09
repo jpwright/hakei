@@ -103,10 +103,10 @@ class InstrumentPanel(ABC):
 
         self._setup_complete = True
         self._update_connection_status()
-        
+
         # Register update callback for connection status
         get_manager().register_update_callback(self._update_connection_status)
-        
+
         log.debug("Panel %s setup complete", self.label)
 
     def _update_connection_status(self) -> None:
@@ -123,7 +123,7 @@ class InstrumentPanel(ABC):
 
         state = self.instrument.state
         is_connected = state == ConnectionState.CONNECTED
-        
+
         if state == ConnectionState.CONNECTED:
             dpg.set_value(self.status_tag, "[Connected]")
             dpg.configure_item(self.status_tag, color=(100, 200, 100))
@@ -140,7 +140,7 @@ class InstrumentPanel(ABC):
             dpg.set_value(self.status_tag, "[Disconnected]")
             dpg.configure_item(self.status_tag, color=(150, 150, 150))
             self._set_controls_enabled(False)
-        
+
         # Trigger sync when transitioning to connected
         if is_connected and not self._was_connected:
             self._on_connected()
@@ -148,7 +148,7 @@ class InstrumentPanel(ABC):
 
     def _on_connected(self) -> None:
         """Called when the instrument transitions to connected state.
-        
+
         Override in subclasses to sync UI with instrument values.
         """
         pass
@@ -158,10 +158,10 @@ class InstrumentPanel(ABC):
         if self._controls_enabled == enabled:
             return
         self._controls_enabled = enabled
-        
+
         if not dpg.does_item_exist(self.controls_tag):
             return
-        
+
         # Recursively enable/disable all interactive children
         self._set_children_enabled(self.controls_tag, enabled)
 
@@ -171,7 +171,7 @@ class InstrumentPanel(ABC):
             children = dpg.get_item_children(parent)
             if not children:
                 return
-            
+
             # Children dict has slot keys (0, 1, 2, etc.)
             for slot_children in children.values():
                 if not slot_children:
@@ -200,7 +200,7 @@ class InstrumentPanel(ABC):
                             dpg.configure_item(child, enabled=enabled)
                     except Exception:
                         pass
-                    
+
                     # Recurse into children
                     self._set_children_enabled(child, enabled)
         except Exception:

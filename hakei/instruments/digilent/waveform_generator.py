@@ -8,7 +8,6 @@ from numpy.typing import NDArray
 
 from hakei.instruments.digilent.device import DigilentDevice
 from hakei.instruments.waveform_generator import (
-    ModulationType,
     WaveformGenerator,
     WaveformType,
 )

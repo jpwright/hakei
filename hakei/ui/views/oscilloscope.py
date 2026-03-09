@@ -205,11 +205,11 @@ class OscilloscopeChannel:
         """Sync UI state from instrument."""
         if not self.instrument:
             return
-        
+
         # Check if instrument has required method (might be placeholder during connection)
         if not hasattr(self.instrument, 'get_channel_config'):
             return
-        
+
         config = self.instrument.get_channel_config(self.channel_id)
         self._enabled = config.enabled
         if dpg.does_item_exist(self.enable_tag):
@@ -240,7 +240,7 @@ class OscilloscopePanel(InstrumentPanel):
         OscilloscopePanel._instance_counter += 1
         instance_id = OscilloscopePanel._instance_counter
         unique_tag = f"scope_{instance_id}"
-        
+
         super().__init__(
             tag=unique_tag,
             label="Oscilloscope",
@@ -482,11 +482,13 @@ class OscilloscopePanel(InstrumentPanel):
         """Handle Y-axis mode change between Overlay and Stacked."""
         if value in DISPLAY_MODE_Y_MAP:
             self._display_mode_y = DISPLAY_MODE_Y_MAP[value]
+            if self.instrument:
+                self.instrument.set_display_mode_y(self._display_mode_y)
             overlay = self._display_mode_y == DisplayModeY.OVERLAY
             for ch in self._channels:
                 if dpg.does_item_exist(ch.drag_line_tag):
                     dpg.configure_item(ch.drag_line_tag, show=ch.enabled and overlay)
-            
+
             if self._display_mode_y == DisplayModeY.STACKED:
                 # Set y-axis limits
                 self._fit_y_axis_stacked()
@@ -720,15 +722,16 @@ class OscilloscopePanel(InstrumentPanel):
             return
 
         # Sync display mode
-        mode = self.instrument.display_mode_x
-        self._display_mode_x = mode
-        mode_label = mode.name.capitalize()
+        self._display_mode_x = self.instrument.display_mode_x
+        self._display_mode_y = self.instrument.display_mode_y
         if dpg.does_item_exist(self._display_mode_x_tag):
-            dpg.set_value(self._display_mode_x_tag, mode_label)
+            dpg.set_value(self._display_mode_x_tag, self._display_mode_x.name.capitalize())
+        if dpg.does_item_exist(self._display_mode_y_tag):
+            dpg.set_value(self._display_mode_y_tag, self._display_mode_y.name.capitalize())
         if dpg.does_item_exist(self._roll_cursor_tag):
             dpg.configure_item(
                 self._roll_cursor_tag,
-                show=(mode == DisplayModeX.ROLL),
+                show=(self._display_mode_x == DisplayModeX.ROLL),
             )
 
         # Sync trigger settings
@@ -762,7 +765,7 @@ class OscilloscopePanel(InstrumentPanel):
 
     def get_axis_limits(self) -> tuple[tuple[float, float], tuple[float, float]]:
         """Get current axis limits for saving to config.
-        
+
         Returns:
             Tuple of ((x_min, x_max), (y_min, y_max))
         """
@@ -782,18 +785,18 @@ class OscilloscopePanel(InstrumentPanel):
         y_max: float,
     ) -> None:
         """Set axis limits from config.
-        
+
         Uses a workaround: creates an invisible "bounds" series at the corners
         to anchor the axis limits, then enables auto-limits and fits.
         """
         if not dpg.does_item_exist(self._y_axis_tag):
             return
-        
+
         # Delete old bounds helper if it exists
         bounds_tag = f"{self.tag}_bounds_helper"
         if dpg.does_item_exist(bounds_tag):
             dpg.delete_item(bounds_tag)
-            
+
         # Create line series at corner points to define bounds
         # Use line series with same point twice - no line will be drawn
         dpg.add_line_series(
@@ -810,15 +813,15 @@ class OscilloscopePanel(InstrumentPanel):
                     dpg.add_theme_color(dpg.mvPlotCol_Line, (0, 0, 0, 0), category=dpg.mvThemeCat_Plots)
                     dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight, 0, category=dpg.mvThemeCat_Plots)
         dpg.bind_item_theme(bounds_tag, bounds_theme)
-        
+
         # Enable auto limits (makes axes scrollable)
         dpg.set_axis_limits_auto(self._x_axis_tag)
         dpg.set_axis_limits_auto(self._y_axis_tag)
-        
+
         # Fit to show all data including our bounds markers
         dpg.fit_axis_data(self._x_axis_tag)
         dpg.fit_axis_data(self._y_axis_tag)
-        
+
         self._last_x_min = x_min
         self._last_x_max = x_max
 
@@ -830,7 +833,7 @@ class OscilloscopePanel(InstrumentPanel):
         ]
         n = len(enabled_chs)
         x_min, x_max = dpg.get_axis_limits(self._x_axis_tag)
-        self.set_axis_limits(x_min, x_max, n / 2.0, -1.0 * n/ 2.0)
+        self.set_axis_limits(x_min, x_max, n / 2.0, -1.0 * n / 2.0)
 
 
     def _check_axis_changes(self) -> None:

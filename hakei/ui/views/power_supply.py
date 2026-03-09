@@ -315,7 +315,7 @@ class PowerSupplyPanel(InstrumentPanel):
         PowerSupplyPanel._instance_counter += 1
         instance_id = PowerSupplyPanel._instance_counter
         unique_tag = f"psu_{instance_id}"
-        
+
         super().__init__(
             tag=unique_tag,
             label="Power Supply",

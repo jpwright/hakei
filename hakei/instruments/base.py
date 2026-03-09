@@ -74,7 +74,7 @@ class Instrument(ABC):
     @property
     def state(self) -> ConnectionState:
         """Get the current connection state.
-        
+
         If instrument is part of a device, returns state based on device connection.
         """
         if self.device is not None:
@@ -108,10 +108,10 @@ class Instrument(ABC):
 
     def connect(self) -> bool:
         """Connect to the instrument.
-        
+
         For standalone instruments, override this method.
         For device-based instruments, connection is handled by the device.
-        
+
         Returns:
             True if connection was successful, False otherwise.
         """
@@ -124,7 +124,7 @@ class Instrument(ABC):
 
     def disconnect(self) -> None:
         """Disconnect from the instrument.
-        
+
         For standalone instruments, override this method.
         For device-based instruments, disconnection is handled by the device.
         """

@@ -237,16 +237,16 @@ class WaveformGeneratorChannel:
         # Generate 2 cycles of the waveform
         num_points = 200
         t = np.linspace(0, 2, num_points)  # 2 cycles
-        
+
         # Get current parameters
         amplitude = dpg.get_value(self.amplitude_tag) if dpg.does_item_exist(self.amplitude_tag) else 1.0
         offset = dpg.get_value(self.offset_tag) if dpg.does_item_exist(self.offset_tag) else 0.0
         duty_cycle = dpg.get_value(self.duty_cycle_tag) if dpg.does_item_exist(self.duty_cycle_tag) else 50.0
         phase = dpg.get_value(self.phase_tag) if dpg.does_item_exist(self.phase_tag) else 0.0
-        
+
         # Phase offset (convert degrees to cycles)
         t_shifted = t + phase / 360.0
-        
+
         # Generate waveform based on type
         waveform = self._selected_waveform
         if waveform == "Sine":
@@ -266,12 +266,12 @@ class WaveformGeneratorChannel:
             y = np.ones(num_points)
         else:  # Arb or unknown
             y = np.sin(2 * np.pi * t_shifted)
-        
+
         # Apply amplitude and offset
         y = y * (amplitude / 2) + offset
-        
+
         dpg.set_value(self.series_tag, [t.tolist(), y.tolist()])
-        
+
         # Update y-axis limits to fit the waveform
         if dpg.does_item_exist(self.y_axis_tag):
             y_max = offset + amplitude / 2 + 0.2
@@ -434,7 +434,7 @@ class WaveformGeneratorChannel:
                             tag=self.mod_type_tag,
                             callback=self._on_mod_type_change,
                         )
-        
+
         # Initialize preview and button highlights with default values
         self._update_waveform_buttons()
         self._update_waveform_preview()
@@ -443,7 +443,7 @@ class WaveformGeneratorChannel:
         """Sync UI state from instrument's current values."""
         if not self.instrument:
             return
-        
+
         # Check if instrument has required method (might be placeholder during connection)
         if not hasattr(self.instrument, 'get_channel_config'):
             return
@@ -492,7 +492,7 @@ class WaveformGeneratorPanel(InstrumentPanel):
         WaveformGeneratorPanel._instance_counter += 1
         instance_id = WaveformGeneratorPanel._instance_counter
         unique_tag = f"wfg_{instance_id}"
-        
+
         super().__init__(
             tag=unique_tag,
             label="Waveform Generator",

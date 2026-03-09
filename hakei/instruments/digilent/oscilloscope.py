@@ -131,32 +131,32 @@ class DigilentOscilloscope(Oscilloscope):
         if self._trigger.enabled:
             # Use single acquisition mode for triggered capture
             dwf.FDwfAnalogInAcquisitionModeSet(self.hdwf, acqmodeSingle)
-            
+
             # Set trigger source to analog input detector
             dwf.FDwfAnalogInTriggerSourceSet(self.hdwf, trigsrcDetectorAnalogIn)
-            
+
             # Set trigger type to edge
             dwf.FDwfAnalogInTriggerTypeSet(self.hdwf, trigtypeEdge)
-            
+
             # Set trigger channel (0-indexed)
             dwf.FDwfAnalogInTriggerChannelSet(self.hdwf, c_int(self._trigger.source - 1))
-            
+
             # Set trigger level
             dwf.FDwfAnalogInTriggerLevelSet(self.hdwf, c_double(self._trigger.level))
-            
+
             # Set trigger hysteresis (helps with noise)
             dwf.FDwfAnalogInTriggerHysteresisSet(self.hdwf, c_double(0.01))
-            
+
             # Set trigger edge condition
             edge_cond = trigcondRisingPositive if self._trigger.edge == TriggerEdge.RISING else trigcondFallingNegative
             dwf.FDwfAnalogInTriggerConditionSet(self.hdwf, edge_cond)
-            
+
             # Set auto timeout based on trigger mode
             if self._trigger.mode == TriggerMode.AUTO:
                 dwf.FDwfAnalogInTriggerAutoTimeoutSet(self.hdwf, c_double(1.0))
             else:
                 dwf.FDwfAnalogInTriggerAutoTimeoutSet(self.hdwf, c_double(0.0))
-            
+
             dwf.FDwfAnalogInTriggerPositionSet(
                 self.hdwf, c_double(self._trigger.position),
             )
@@ -247,7 +247,7 @@ class DigilentOscilloscope(Oscilloscope):
         """Enable or disable the trigger."""
         was_enabled = self._trigger.enabled
         self._trigger.enabled = enabled
-        
+
         # Reconfigure acquisition mode if trigger state changed
         if enabled != was_enabled:
             self._configure_trigger_mode()
