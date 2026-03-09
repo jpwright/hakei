@@ -15,7 +15,6 @@ from hakei.config import (
     save_config,
 )
 from hakei.instruments import (
-    ConnectionState,
     Device,
     DiscoveredInstrument,
     Instrument,
@@ -204,26 +203,25 @@ def _open_device_instrument(discovered: DiscoveredInstrument) -> None:
 
     # Check if device needs to be created
     device_needs_connect = device_address not in _open_devices
-    
+
     if device_needs_connect:
         if discovered.device_class is None:
             raise NotImplementedError(
                 f"No device driver implemented for {discovered.manufacturer} {discovered.model} "
                 f"(address: {device_address})"
             )
-        # Create device but don't connect yet
         device = discovered.device_class(device_address, **discovered.device_kwargs)
         _open_devices[device_address] = device
     else:
         device = _open_devices[device_address]
 
-    # Create a placeholder instrument in CONNECTING state for the panel
-    # The actual instrument will be set after device connects
-    placeholder = _PlaceholderInstrument(address)
-    _open_instruments[address] = placeholder
+    # Create the real instrument immediately (not yet connected) so the panel
+    # can read instrument properties like num_channels
+    instrument = discovered.instrument_class(address, device=device, **discovered.instrument_kwargs)
+    _open_instruments[address] = instrument
 
-    # Create the panel immediately (shows "Connecting" status)
-    panel = discovered.panel_class(instrument=placeholder, **discovered.panel_kwargs)
+    # Create the panel with the real instrument (shows "Connecting" status via instrument.state)
+    panel = discovered.panel_class(instrument=instrument, **discovered.panel_kwargs)
     panel.setup()
     _open_panels[address] = panel
 
@@ -231,51 +229,25 @@ def _open_device_instrument(discovered: DiscoveredInstrument) -> None:
     manager = get_manager()
     manager.on_viewport_resize()
 
-    # Connect and activate in background thread
+    # Connect in background thread
     def connect_thread():
-        nonlocal device
-        
         if device_needs_connect:
             log.info("Connecting to device: %s", device_address)
             if not device.connect():
                 log.error("Failed to connect to device: %s", device_address)
-                placeholder._state = ConnectionState.ERROR
                 return
             log.info("Device connected: %s", device_address)
 
-        # Activate the instrument on the device
-        instrument = device.activate_instrument(instrument_id)
-        if instrument is None:
-            log.error("Failed to activate instrument %s on device %s", instrument_id, device_address)
-            placeholder._state = ConnectionState.ERROR
-            return
+        # Connect the instrument and register it with the device
+        if hasattr(instrument, "connect"):
+            instrument.connect()
+        device._active_instruments[instrument_id] = instrument
 
-        # Replace placeholder with real instrument
-        _open_instruments[address] = instrument
-        panel.instrument = instrument
-        
         log.info("Opened device instrument: %s", address)
         save_default_config()
 
     thread = threading.Thread(target=connect_thread, daemon=True)
     thread.start()
-
-
-class _PlaceholderInstrument:
-    """Placeholder instrument used while connecting to show status."""
-    
-    def __init__(self, resource_address: str):
-        self.resource_address = resource_address
-        self._state = ConnectionState.CONNECTING
-        self._info = None
-    
-    @property
-    def state(self) -> ConnectionState:
-        return self._state
-    
-    @property
-    def info(self):
-        return self._info
 
 
 def save_default_config() -> None:

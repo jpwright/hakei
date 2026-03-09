@@ -28,25 +28,17 @@ devices:
         description: 4-channel Oscilloscope
         instrument_class: hakei.instruments.dummy.DummyOscilloscope
         panel_class: hakei.ui.views.OscilloscopePanel
-        instrument_kwargs:
-          num_channels: 4
-        panel_kwargs:
-          num_channels: 4
       - id: power_supply
         description: 2-channel Power Supply
         instrument_class: hakei.instruments.dummy.DummyPowerSupply
         panel_class: hakei.ui.views.PowerSupplyPanel
         instrument_kwargs:
           num_channels: 2
-        panel_kwargs:
-          num_channels: 2
       - id: waveform_generator
         description: 2-channel Waveform Generator
         instrument_class: hakei.instruments.dummy.DummyWaveformGenerator
         panel_class: hakei.ui.views.WaveformGeneratorPanel
         instrument_kwargs:
-          num_channels: 2
-        panel_kwargs:
           num_channels: 2
 
   # Digilent Analog Discovery 2
@@ -59,25 +51,17 @@ devices:
         description: 2-channel Oscilloscope (30MHz, 100MS/s)
         instrument_class: hakei.instruments.digilent.DigilentOscilloscope
         panel_class: hakei.ui.views.OscilloscopePanel
-        instrument_kwargs:
-          num_channels: 2
-        panel_kwargs:
-          num_channels: 2
       - id: waveform_generator
         description: 2-channel Waveform Generator (12MHz)
         instrument_class: hakei.instruments.digilent.DigilentWaveformGenerator
         panel_class: hakei.ui.views.WaveformGeneratorPanel
         instrument_kwargs:
           num_channels: 2
-        panel_kwargs:
-          num_channels: 2
       - id: power_supply
         description: Variable Power Supply (0-5V, 0-0.5V negative)
         instrument_class: hakei.instruments.digilent.DigilentPowerSupply
         panel_class: hakei.ui.views.PowerSupplyPanel
         instrument_kwargs:
-          num_channels: 2
-        panel_kwargs:
           num_channels: 2
       - id: logic_analyzer
         description: 16-channel Logic Analyzer (100MS/s)

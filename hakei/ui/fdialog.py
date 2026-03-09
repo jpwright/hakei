@@ -820,27 +820,9 @@ class FileDialog:
                 elif (self.user_style == 1):
                     with dpg.child_window(tag=self.tag+"shortcut_menu", width=40, show=self.show_shortcuts_menu, height=-info_px):
                         home = self.get_directory_path("Home")
-                        desktop = self.get_directory_path("Desktop")
-                        downloads = self.get_directory_path("Downloads")
-                        images = self.get_directory_path("Pictures")
-                        documents = self.get_directory_path("Documents")
-                        musics = self.get_directory_path("Music")
-                        videos = self.get_directory_path("Videos")
 
                         dpg.add_image_button(
                             self.img_home, callback=lambda: self.chdir(home))
-                        dpg.add_image_button(
-                            self.img_desktop, callback=lambda: self.chdir(desktop))
-                        dpg.add_image_button(
-                            self.img_downloads, callback=lambda: self.chdir(downloads))
-                        dpg.add_image_button(
-                            self.img_picture_folder, callback=lambda: self.chdir(images))
-                        dpg.add_image_button(
-                            self.img_document_folder, callback=lambda: self.chdir(documents))
-                        dpg.add_image_button(
-                            self.img_music_folder, callback=lambda: self.chdir(musics))
-                        dpg.add_image_button(
-                            self.img_videos, callback=lambda: self.chdir(videos))
 
                         dpg.add_separator()
 

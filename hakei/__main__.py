@@ -8,6 +8,8 @@ power supplies, and waveform generators.
 import logging
 import time
 
+import click
+from click_loglevel import LogLevel
 import coloredlogs
 import dearpygui.dearpygui as dpg
 
@@ -68,9 +70,11 @@ def _on_setting_changed(key: str, value) -> None:
         _fps.set_enabled(bool(value))
 
 
-def main():
+@click.command()
+@click.option('--log-level', type=LogLevel(), default='INFO', help='Set the logging level (CRITICAL, ERROR, WARNING, INFO, DEBUG, NOTSET).')
+def main(log_level):
     coloredlogs.install(
-        level=logging.INFO,
+        level=log_level,
         fmt="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
 

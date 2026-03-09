@@ -152,49 +152,44 @@ class OscilloscopeChannel:
             no_scrollbar=True,
             border=True,
         ):
-            # Channel header
-            with dpg.group(horizontal=True):
-                dpg.add_text(f"CH{self.channel_id}")
-                dpg.add_spacer(width=10)
-                dpg.add_checkbox(
-                    label="Enable",
-                    default_value=self._enabled,
-                    tag=self.enable_tag,
-                    callback=self._on_enable,
-                )
-
-            # Coupling
-            with dpg.group(horizontal=True):
-                dpg.add_text("Coupling:")
-                dpg.add_combo(
-                    items=list(COUPLING_MAP.keys()),
-                    default_value="DC",
-                    width=60,
-                    tag=self.coupling_tag,
-                    callback=self._on_coupling,
-                )
-
-            # Offset
-            with dpg.group(horizontal=True):
-                dpg.add_text("Offset:")
-                dpg.add_input_float(
-                    default_value=0.0,
-                    width=70,
-                    step=0,
-                    tag=self.offset_tag,
-                    callback=self._on_offset,
-                )
-
-            # Scale
-            with dpg.group(horizontal=True):
-                dpg.add_text("Scale:")
-                dpg.add_input_float(
-                    default_value=1.0,
-                    width=70,
-                    step=0,
-                    min_value=0.001,
-                    tag=self.scale_tag,
-                    callback=self._on_scale,
+            with dpg.table(header_row=False):
+                dpg.add_table_column(width_fixed=True)
+                dpg.add_table_column(width_stretch=True)
+                with dpg.table_row():
+                    dpg.add_text(f"CH{self.channel_id}")
+                    dpg.add_checkbox(
+                        label="Enable",
+                        default_value=self._enabled,
+                        tag=self.enable_tag,
+                        callback=self._on_enable,
+                    )
+                with dpg.table_row():
+                    dpg.add_text("Coupling")
+                    dpg.add_combo(
+                        items=list(COUPLING_MAP.keys()),
+                        default_value="DC",
+                        width=60,
+                        tag=self.coupling_tag,
+                        callback=self._on_coupling,
+                    )
+                with dpg.table_row():
+                    dpg.add_text("Offset")
+                    dpg.add_input_float(
+                        default_value=0.0,
+                        width=70,
+                        step=0,
+                        tag=self.offset_tag,
+                        callback=self._on_offset,
+                    )
+                with dpg.table_row():
+                    dpg.add_text("Scale")
+                    dpg.add_input_float(
+                        default_value=1.0,
+                        width=70,
+                        step=0,
+                        min_value=0.001,
+                        tag=self.scale_tag,
+                        callback=self._on_scale,
                 )
 
     def sync_from_instrument(self) -> None:
