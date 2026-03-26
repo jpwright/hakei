@@ -6,6 +6,8 @@ from enum import Enum, auto
 
 import dearpygui.dearpygui as dpg
 
+from hakei.ui.theme import get_dpi_scale
+
 log = logging.getLogger(__name__)
 
 DEFAULT_SIDEBAR_WIDTH = 280
@@ -32,7 +34,8 @@ class TiledWindow:
     visible: bool = True
     last_pos: list[int] = field(default_factory=lambda: [0, 0])
     last_height: int = 0
-    last_collapsed: bool = False
+    effective_height: int = 0
+    is_collapsed: bool = False
     is_dragging: bool = False
     drag_settled_frames: int = 0
     expected_pos: list[int] = field(default_factory=lambda: [0, 0])
@@ -51,6 +54,7 @@ class TilingManager:
         self._drop_zone: DropZone | None = None
         self._target_idx: int | None = None
         self._update_callbacks: list[callable] = []
+        self._collapsed_height = int(24 * get_dpi_scale())
 
     def register_update_callback(self, callback: callable) -> None:
         """Register a callback to be called each frame."""
@@ -137,6 +141,9 @@ class TilingManager:
         for window in visible:
             if window.last_height <= 0:
                 window.last_height = window.preferred_height
+            window.effective_height = window.last_height
+            if window.is_collapsed:
+                window.effective_height = self._collapsed_height
 
         current_y = start_y
         for i, window in enumerate(visible):
@@ -144,26 +151,28 @@ class TilingManager:
             window.expected_pos = [x, current_y]
 
             if skip_dragging and window.is_dragging:
-                current_y += window.last_height + PADDING
+                current_y += window.effective_height + PADDING
                 continue
 
-            if is_last:
-                height = start_y + total_height - current_y
-            else:
-                height = window.last_height
+            if not window.is_collapsed:
+                if is_last:
+                    height = start_y + total_height - current_y
+                else:
+                    height = window.effective_height
 
-            height = max(MIN_WINDOW_HEIGHT, height)
+                height = max(MIN_WINDOW_HEIGHT, height)
 
             try:
                 dpg.set_item_pos(window.tag, [x, current_y])
                 dpg.set_item_width(window.tag, width)
-                dpg.set_item_height(window.tag, height)
+                if not window.is_collapsed:
+                    dpg.set_item_height(window.tag, height)
+                    window.last_height = height
                 window.last_pos = [x, current_y]
-                window.last_height = height
             except Exception:
                 log.debug("Could not resize window %s", window.tag)
 
-            current_y += height + PADDING
+            current_y += window.effective_height + PADDING
 
     def _check_window_resize(self) -> None:
         """Check if any window was resized and adjust layout."""
@@ -171,33 +180,34 @@ class TilingManager:
         if not visible:
             return
 
-        resized = False
+        apply = False
         for window in visible:
             if window.is_dragging:
                 continue
 
-            try:
-                current_pos = dpg.get_item_pos(window.tag)
-                current_height = dpg.get_item_height(window.tag)
-                height_changed = abs(current_height - window.last_height) > 5
-                top_moved = abs(current_pos[1] - window.expected_pos[1]) > 5
+            current_pos = dpg.get_item_pos(window.tag)
+            current_height = dpg.get_item_height(window.tag)
+            height_changed = abs(current_height - window.last_height) > 5
+            top_moved = abs(current_pos[1] - window.expected_pos[1]) > 5
 
-                current_collapsed = dpg.is_item_shown(window.tag)
-                log.info(f"{window.tag} current_collapsed: {current_collapsed}")
+            current_collapse = not dpg.get_item_state(window.tag).get('visible')
+            collapse_changed = window.is_collapsed is not current_collapse
 
-                if height_changed:
-                    if top_moved:
-                        # Top-edge resize detected - revert it
-                        dpg.set_item_pos(window.tag, window.expected_pos)
-                        dpg.set_item_height(window.tag, window.last_height)
-                    else:
-                        # Bottom-edge resize - accept it
-                        window.last_height = max(MIN_WINDOW_HEIGHT, current_height)
-                        resized = True
-            except Exception:
-                continue
+            if height_changed:
+                if top_moved:
+                    # Top-edge resize detected - revert it
+                    dpg.set_item_pos(window.tag, window.expected_pos)
+                    dpg.set_item_height(window.tag, window.last_height)
+                else:
+                    # Bottom-edge resize - accept it
+                    window.last_height = max(MIN_WINDOW_HEIGHT, current_height)
+                    apply = True
 
-        if resized:
+            if collapse_changed:
+                window.is_collapsed = current_collapse
+                apply = True
+
+        if apply:
             self.apply_layout(skip_dragging=True)
 
     def _handle_drop(self, dragged_idx: int, target_idx: int, zone: DropZone) -> None:
